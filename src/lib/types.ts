@@ -1,0 +1,295 @@
+export interface ApiResult<T> {
+  ok: boolean
+  data?: T
+  fetchedAt?: number
+  stale?: boolean
+  error?: string
+}
+
+export interface Drop {
+  location: string
+  type?: string
+  chance: number
+  rarity?: string
+}
+
+export interface Component {
+  uniqueName?: string
+  name: string
+  itemCount?: number
+  imageName?: string
+  tradable?: boolean
+  drops?: Drop[]
+}
+
+export interface Ability {
+  name: string
+  description: string
+}
+
+export interface Item {
+  uniqueName: string
+  name: string
+  description?: string
+  imageName?: string
+  category: string
+  type?: string
+  masteryReq?: number
+  maxLevelCap?: number
+  masterable?: boolean
+  isPrime?: boolean
+  vaulted?: boolean
+  wikiaUrl?: string
+  components?: Component[]
+  abilities?: Ability[]
+  passiveDescription?: string
+  health?: number
+  shield?: number
+  armor?: number
+  power?: number
+  sprintSpeed?: number
+  aura?: string
+  polarities?: string[]
+  releaseDate?: string
+  buildPrice?: number
+  buildTime?: number
+  totalDamage?: number
+  criticalChance?: number
+  criticalMultiplier?: number
+  procChance?: number
+  fireRate?: number
+  magazineSize?: number
+  reloadTime?: number
+  disposition?: number
+  trigger?: string
+}
+
+export interface DropSearchHit {
+  place: string
+  item: string
+  rarity: string
+  chance: number
+}
+
+export interface Cycle {
+  id: string
+  expiry: string
+  activation?: string
+  state: string
+}
+
+export interface Fissure {
+  id: string
+  node: string
+  missionType: string
+  enemy: string
+  tier: string
+  tierNum: number
+  expiry: string
+  isStorm: boolean
+  isHard: boolean
+}
+
+export interface SortieVariant {
+  missionType: string
+  modifier: string
+  modifierDescription?: string
+  node: string
+}
+
+export interface ArchonMission {
+  node: string
+  type: string
+}
+
+export interface VoidTraderItem {
+  item: string
+  ducats: number
+  credits: number
+}
+
+export interface Reward {
+  items: string[]
+  countedItems: { type: string; count: number }[]
+  credits: number
+  thumbnail?: string
+}
+
+export interface Invasion {
+  id: string
+  node: string
+  desc: string
+  completion: number
+  completed: boolean
+  vsInfestation: boolean
+  attacker: { reward: Reward; faction: string }
+  defender: { reward: Reward; faction: string }
+}
+
+export interface NightwaveChallenge {
+  id: string
+  title: string
+  desc: string
+  reputation: number
+  isDaily: boolean
+  isElite: boolean
+  expiry: string
+}
+
+export interface DuviriCycle extends Cycle {
+  choices?: { category: string; choices: string[] }[]
+}
+
+export interface WorldState {
+  timestamp: string
+  buildLabel?: string
+  cetusCycle?: Cycle
+  vallisCycle?: Cycle
+  cambionCycle?: Cycle
+  zarimanCycle?: Cycle
+  earthCycle?: Cycle
+  duviriCycle?: DuviriCycle
+  fissures?: Fissure[]
+  voidTrader?: { activation: string; expiry: string; location: string; inventory: VoidTraderItem[] }
+  sortie?: { expiry: string; boss?: string; faction?: string; variants: SortieVariant[] }
+  archonHunt?: { expiry: string; boss?: string; missions: ArchonMission[] }
+  steelPath?: { activation?: string; expiry: string; currentReward?: { name: string; cost: number }; rotation?: { name: string; cost: number }[] }
+  invasions?: Invasion[]
+  nightwave?: { season: number; tag?: string; expiry: string; activeChallenges: NightwaveChallenge[] }
+  arbitration?: { node: string; type: string; enemy: string; expiry: string; expired?: boolean }
+  events?: { id: string; description: string; expiry: string; node?: string; tooltip?: string }[]
+}
+
+export interface SyndicateStanding {
+  tag: string
+  // общая за все ранги, в минусе ниже 0
+  standing: number
+  rank: number
+}
+
+export interface Profile {
+  displayName: string | null
+  masteryRank: number | null
+  items: { uniqueName: string; xp: number }[]
+  // в старом кэше профиля нет
+  syndicates?: SyndicateStanding[]
+  // сколько ещё можно сегодня
+  dailyStanding?: Record<string, number>
+}
+
+export interface DetectResult {
+  ok: boolean
+  accountId?: string
+  displayName?: string | null
+  error?: string
+}
+
+export interface ShortDrop {
+  location: string
+  chance: number
+  rarity?: string
+}
+
+export interface ModItem {
+  uniqueName: string
+  name: string
+  type: string
+  rarity?: string
+  polarity?: string
+  baseDrain?: number
+  fusionLimit?: number
+  compatName?: string
+  isPrime: boolean
+  tradable: boolean
+  imageName?: string
+  wikiaUrl?: string
+  stats: string[]
+  drops: ShortDrop[]
+}
+
+export interface ArcaneItem {
+  uniqueName: string
+  name: string
+  type?: string
+  rarity?: string
+  imageName?: string
+  wikiaUrl?: string
+  tradable: boolean
+  stats: string[]
+  drops: ShortDrop[]
+}
+
+export interface RelicReward {
+  name: string
+  uniqueName?: string
+  slug: string | null
+  rarity?: string
+  intact: number | null
+  radiant: number | null
+}
+
+export interface RelicItem {
+  id: string
+  name: string
+  tier: string
+  code: string
+  vaulted: boolean
+  imageName?: string
+  rewards: RelicReward[]
+}
+
+export interface CatalogMap {
+  mods: ModItem[]
+  arcanes: ArcaneItem[]
+  relics: RelicItem[]
+  companions: Item[]
+}
+
+export type CatalogName = keyof CatalogMap
+
+export interface MarketItem {
+  id?: string | null
+  slug: string
+  gameRef: string | null
+  en: string
+  ru: string | null
+  ducats: number | null
+  tags: string[]
+}
+
+export interface MarketSeller {
+  name: string
+  platinum: number
+  quantity: number
+  status: string
+  rank: number | null
+}
+
+export interface MarketPrice {
+  sell: number | null
+  buy: number | null
+  sellers: MarketSeller[]
+}
+
+export type PriceMap = Record<string, { median: number; average: number; volume: number }>
+
+export interface Bridge {
+  apiGet: (path: string, ttlSeconds?: number, force?: boolean) => Promise<ApiResult<unknown>>
+  catalog: <K extends CatalogName>(name: K, force?: boolean) => Promise<ApiResult<CatalogMap[K]>>
+  marketItems: (force?: boolean) => Promise<ApiResult<MarketItem[]>>
+  marketPrice: (slug: string) => Promise<ApiResult<MarketPrice>>
+  marketPrices: (force?: boolean) => Promise<ApiResult<PriceMap>>
+  focusWindow: () => Promise<void>
+  toggleOverlay: () => Promise<void>
+  hideOverlay: () => Promise<void>
+  setOverlayOpacity: (value: number) => Promise<void>
+  detectAccount: () => Promise<DetectResult>
+  fetchProfile: (accountId: string, platform: string) => Promise<ApiResult<Profile>>
+  openExternal: (url: string) => Promise<void>
+}
+
+declare global {
+  interface Window {
+    wf?: Bridge
+  }
+}
