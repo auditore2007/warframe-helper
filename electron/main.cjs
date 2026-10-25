@@ -4,7 +4,7 @@ const { app, ipcMain, shell, protocol, Notification, globalShortcut } = require(
 const path = require('node:path')
 const data = require('./data.cjs')
 const windows = require('./windows.cjs')
-const { loginViaWarframe, USER_DATA_URL } = require('./login.cjs')
+const { loginViaWarframe } = require('./login.cjs')
 const { accountIdFromUserData } = require('./lib/profile.cjs')
 const { stopOcr, OCR_DIR } = require('./ocr.cjs')
 const { createRewardScanner } = require('./rewardScan.cjs')
@@ -103,7 +103,6 @@ function registerIpc() {
   ipcMain.handle('lookup:hide', () => lookup.hide())
   ipcMain.handle('account:login', () => loginViaWarframe(windows.getMainWindow()))
   ipcMain.handle('account:parse', (_e, text) => accountIdFromUserData(text))
-  ipcMain.handle('account:userDataPage', () => shell.openExternal(USER_DATA_URL))
   ipcMain.handle('settings:get', () => ({ settings: getSettings(), failedHotkeys }))
   ipcMain.handle('settings:set', saveSettings)
   ipcMain.handle('notify', notify)
@@ -113,7 +112,7 @@ function registerIpc() {
   ipcMain.handle('overlay:opacity', windows.setOverlayOpacity)
 }
 
-app.setAppUserModelId('com.lenoxolen.warframehelper')
+app.setAppUserModelId('WarframeHelper')
 
 app.whenReady().then(() => {
   protocol.handle('wfimg', data.serveImage)

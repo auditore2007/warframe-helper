@@ -1,7 +1,7 @@
 {
   "name": "warframe-helper",
   "productName": "Warframe Helper",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Справочник и помощник по Warframe: гайды, фарм, звёздная карта, живой статус мира и трекер мастерства",
   "author": "lenoxolen",
   "private": true,
@@ -15,7 +15,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "build": {
-    "appId": "com.lenoxolen.warframehelper",
+    "appId": "WarframeHelper",
     "productName": "Warframe Helper",
     "files": [
       "dist/**/*",

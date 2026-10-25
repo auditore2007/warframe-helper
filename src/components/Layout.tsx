@@ -1,151 +1,130 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { useEffect, useRef } from 'react'
-import { Icon, type IconName } from './Icon'
+import { useEffect, useRef, useState } from 'react'
+import { Icon } from './Icon'
+import { CommandPalette } from './CommandPalette'
 import { usePlayer, useProgress } from '../state/AppState'
 import { useWorld } from '../hooks/useCatalog'
-import { gameBuildDate } from '../lib/time'
 import { useWatchNotifier } from '../hooks/useWatchNotifier'
+import { gameBuildDate } from '../lib/time'
+import { SECTIONS, sectionOf } from '../data/navigation'
 
-interface NavItem {
-  to: string
-  label: string
-  icon: IconName
+function AccountNode() {
+  const { progress } = useProgress()
+  const { profile } = usePlayer()
+  if (!progress.account) {
+    return (
+      <Link to="/tracker" className="rail__account" title="Привязать аккаунт">
+        <span className="rail__mr rail__mr--empty"><Icon name="user" size={16} /></span>
+        <span className="rail__label">Войти</span>
+      </Link>
+    )
+  }
+  return (
+    <Link to="/tracker" className="rail__account" title={profile?.displayName ?? progress.account.displayName ?? 'Аккаунт'}>
+      <span className="rail__mr"><span>{profile?.masteryRank ?? '-'}</span></span>
+      <span className="rail__label">MR</span>
+    </Link>
+  )
 }
-
-const NAV: { group: string | null; items: NavItem[] }[] = [
-  {
-    group: null,
-    items: [
-      { to: '/', label: 'Обзор', icon: 'home' },
-      { to: '/world', label: 'Мир сейчас', icon: 'world' },
-      { to: '/rotations', label: 'Ротации', icon: 'cycle' },
-    ],
-  },
-  {
-    group: 'Справочник',
-    items: [
-      { to: '/frames', label: 'Варфреймы', icon: 'frame' },
-      { to: '/weapons', label: 'Оружие', icon: 'weapon' },
-      { to: '/companions', label: 'Компаньоны', icon: 'pet' },
-      { to: '/mods', label: 'Моды', icon: 'mod' },
-      { to: '/arcanes', label: 'Мистификаторы', icon: 'arcane' },
-      { to: '/relics', label: 'Реликвии', icon: 'relic' },
-      { to: '/shards', label: 'Осколки Архонта', icon: 'gem' },
-      { to: '/calculator', label: 'Калькулятор урона', icon: 'weapon' },
-      { to: '/farm', label: 'Фарм и дроп', icon: 'farm' },
-      { to: '/starchart', label: 'Звёздная карта', icon: 'map' },
-      { to: '/guides', label: 'Гайды', icon: 'book' },
-    ],
-  },
-  {
-    group: 'Торговля',
-    items: [
-      { to: '/market', label: 'Рынок', icon: 'market' },
-      { to: '/relic-value', label: 'Ценность реликвий', icon: 'coin' },
-      { to: '/sell', label: 'Что продать', icon: 'coin' },
-      { to: '/baro', label: 'Баро', icon: 'gem' },
-      { to: '/rivens', label: 'Цены ривенов', icon: 'mod' },
-    ],
-  },
-  {
-    group: 'Ты',
-    items: [
-      { to: '/tracker', label: 'Трекер', icon: 'user' },
-      { to: '/mastery', label: 'Мастерство', icon: 'star' },
-      { to: '/planner', label: 'Планировщик фарма', icon: 'target' },
-      { to: '/foundry', label: 'Литейная', icon: 'clock' },
-      { to: '/syndicates', label: 'Синдикаты', icon: 'banner' },
-      { to: '/collections', label: 'Коллекции', icon: 'trophy' },
-      { to: '/settings', label: 'Настройки', icon: 'sigil' },
-    ],
-  },
-]
 
 function Versions() {
   const { data } = useWorld()
   const build = gameBuildDate(data?.buildLabel)
   return (
-    <div className="small faint" style={{ padding: '6px 12px 0' }}>
-      v{__APP_VERSION__}{build && <> · игра от {build}</>}
+    <div className="rail__version" title={build ? `Сборка игры от ${build}` : undefined}>
+      v{__APP_VERSION__}
     </div>
   )
 }
 
-function PlayerChip() {
-  const { progress } = useProgress()
-  const { profile, status } = usePlayer()
-  if (!progress.account) {
-    return (
-      <Link to="/tracker" className="nav__link">
-        <Icon name="user" />
-        <span className="small">Привязать аккаунт</span>
-      </Link>
-    )
-  }
+// вертикальная "орокинская" ось: разделы - ромбы на золотой линии
+function Rail({ onSearch }: { onSearch: () => void }) {
+  const { pathname } = useLocation()
+  const current = sectionOf(pathname)
   return (
-    <Link to="/tracker" className="nav__link" style={{ alignItems: 'center' }}>
-      <span className="mr-badge" style={{ width: 40, height: 40, fontSize: 18 }}>
-        <span>{profile?.masteryRank ?? '–'}</span>
-      </span>
-      <span style={{ lineHeight: 1.3 }}>
-        <span style={{ display: 'block', color: 'var(--bone)' }}>{profile?.displayName ?? progress.account.displayName ?? 'Тэнно'}</span>
-        <span className="small faint">{status === 'loading' ? 'Синхронизация…' : 'Ранг мастерства'}</span>
-      </span>
-    </Link>
+    <aside className="rail">
+      <Link to="/" className="rail__brand" aria-label="Codex Tenno, на главную"><Icon name="sigil" size={30} /></Link>
+      <nav className="rail__spine" aria-label="Разделы">
+        {SECTIONS.map((s) => (
+          <Link key={s.id} to={s.pages[0].to} className={`rail__node ${current.id === s.id ? 'is-active' : ''}`} aria-current={current.id === s.id ? 'page' : undefined}>
+            <span className="rail__gem"><Icon name={s.icon} size={18} /></span>
+            <span className="rail__label">{s.label}</span>
+          </Link>
+        ))}
+      </nav>
+      <div className="rail__foot">
+        <button className="rail__tool" onClick={onSearch} title="Поиск (Ctrl+K)" aria-label="Поиск"><Icon name="search" size={18} /></button>
+        {window.wf && (
+          <button className="rail__tool" onClick={() => void window.wf?.toggleOverlay()} title="Оверлей поверх игры" aria-label="Оверлей"><Icon name="overlay" size={18} /></button>
+        )}
+        <AccountNode />
+        <Versions />
+      </div>
+    </aside>
+  )
+}
+
+function Topbar({ onSearch }: { onSearch: () => void }) {
+  const { pathname } = useLocation()
+  const section = sectionOf(pathname)
+  return (
+    <header className="topbar">
+      <div className="topbar__title">{section.label}</div>
+      {section.pages.length > 1 && (
+        <nav className="tabs" aria-label={section.label}>
+          {section.pages.map((p) => (
+            <NavLink key={p.to} to={p.to} end={p.to === '/'} className="tabs__tab">{p.label}</NavLink>
+          ))}
+        </nav>
+      )}
+      <button className="topbar__search" onClick={onSearch}>
+        <Icon name="search" size={15} />
+        <span>Найти</span>
+        <kbd>Ctrl K</kbd>
+      </button>
+    </header>
   )
 }
 
 export function Layout() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
+  const mainRef = useRef<HTMLElement>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
   useWatchNotifier()
 
   // трей и уведомления просят открыть страницу
   useEffect(() => window.wf?.onNavigate((hash) => navigate(hash)), [navigate])
-  const mainRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0 })
   }, [pathname])
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {
+        e.preventDefault()
+        setSearchOpen((v) => !v)
+      }
+    }
+    const onOpen = () => setSearchOpen(true)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('wfh:search', onOpen)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('wfh:search', onOpen)
+    }
+  }, [])
+
   return (
     <div className="shell">
       <div className="titlebar" />
-      <aside className="sidebar">
-        <NavLink to="/" className="brand" aria-label="Warframe Helper - на главную">
-          <Icon name="sigil" size={30} />
-          <span>
-            <span className="brand__name" style={{ display: 'block' }}>Codex Tenno</span>
-            <span className="brand__sub">помощник по Warframe</span>
-          </span>
-        </NavLink>
-        <nav className="nav" aria-label="Разделы">
-          {NAV.map((block) => (
-            <div key={block.group ?? 'top'} className="nav">
-              {block.group && <div className="nav__group">{block.group}</div>}
-              {block.items.map((item) => (
-                <NavLink key={item.to} to={item.to} end={item.to === '/'} className="nav__link">
-                  <Icon name={item.icon} />
-                  {item.label}
-                </NavLink>
-              ))}
-            </div>
-          ))}
-        </nav>
-        <div className="sidebar__foot">
-          {window.wf && (
-            <button className="nav__link" style={{ width: '100%', background: 'none', border: 0, cursor: 'pointer' }} onClick={() => void window.wf?.toggleOverlay()} title="Окно поверх игры. Горячая клавиша Ctrl+Shift+O">
-              <Icon name="overlay" />
-              <span>Оверлей <span className="small faint">Ctrl+Shift+O</span></span>
-            </button>
-          )}
-          <PlayerChip />
-          <Versions />
-        </div>
-      </aside>
+      <Rail onSearch={() => setSearchOpen(true)} />
       <main className="main" ref={mainRef}>
+        <Topbar onSearch={() => setSearchOpen(true)} />
         <Outlet />
       </main>
+      <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   )
 }

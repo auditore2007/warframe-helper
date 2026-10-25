@@ -409,9 +409,8 @@ export interface Bridge {
   openLastLookup: () => Promise<string>
   openLastScan: () => Promise<string>
   onRewards: (cb: (e: RewardEvent) => void) => () => void
-  loginWarframe: () => Promise<{ ok: boolean; accountId?: string; error?: string }>
+  loginWarframe: () => Promise<{ ok: boolean; accountId?: string; displayName?: string | null; error?: string }>
   parseAccountId: (text: string) => Promise<string | null>
-  openUserDataPage: () => Promise<void>
   focusWindow: () => Promise<void>
   toggleOverlay: () => Promise<void>
   hideOverlay: () => Promise<void>

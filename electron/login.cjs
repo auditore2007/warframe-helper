@@ -1,26 +1,31 @@
 'use strict'
 
 const { BrowserWindow } = require('electron')
-const { accountIdFromUserData } = require('./lib/profile.cjs')
+const { accountFromUserInfoCookie } = require('./lib/profile.cjs')
 
-const LOGIN_URL = 'https://www.warframe.com/login'
-const USER_DATA_URL = 'https://www.warframe.com/api/user-data'
-const POLL_MS = 2000
+const LOGIN_URL = 'https://www.warframe.com/ru/login'
+const COOKIE_NAME = 'user-info'
+const POLL_MS = 1500
 
 let pending = null
 
-// после входа сайт отдаёт user_id на /api/user-data, его и ждём
-async function readAccountId(session) {
+// после входа сайт кладёт cookie user-info с id и ником, его и ждём
+// { account } - нашли id, { loggedInWithoutId } - вошли, но id в cookie нет, null - ещё не вошли
+async function readAccount(session) {
   try {
-    const res = await session.fetch(USER_DATA_URL, { cache: 'no-store' })
-    if (!res.ok) return null
-    return accountIdFromUserData(await res.text())
+    const cookies = await session.cookies.get({ name: COOKIE_NAME })
+    for (const c of cookies) {
+      const account = accountFromUserInfoCookie(c.value)
+      if (account) return { account }
+      if (c.value && c.value !== 'null' && decodeURIComponent(c.value).startsWith('{')) return { loggedInWithoutId: true }
+    }
   } catch {
-    return null
+    /* окно уже закрыли */
   }
+  return null
 }
 
-// окно с официальным входом DE. пароль вводится на их сайте, мы видим только id.
+// окно с обычным входом DE. пароль вводится на их сайте, мы смотрим только cookie с id.
 // сессия в памяти, после закрытия всё стирается
 function loginViaWarframe(parent) {
   if (pending) {
@@ -29,8 +34,8 @@ function loginViaWarframe(parent) {
   }
   const win = new BrowserWindow({
     parent: parent || undefined,
-    width: 520,
-    height: 760,
+    width: 560,
+    height: 800,
     title: 'Вход на warframe.com',
     autoHideMenuBar: true,
     backgroundColor: '#0D1117',
@@ -56,11 +61,12 @@ function loginViaWarframe(parent) {
       resolve(result)
     }
     const check = async () => {
-      const id = await readAccountId(session)
-      if (id) finish({ ok: true, accountId: id })
+      const res = await readAccount(session)
+      if (res && res.account) finish({ ok: true, ...res.account })
+      else if (res && res.loggedInWithoutId) finish({ ok: false, error: 'Вход прошёл, но сайт не отдал ID аккаунта. Попробуй ещё раз чуть позже.' })
     }
     timer = setInterval(check, POLL_MS)
-    win.webContents.on('did-navigate', check)
+    session.cookies.on('changed', (_e, cookie) => cookie.name === COOKIE_NAME && void check())
     win.on('closed', () => finish({ ok: false, error: 'Окно входа закрыто' }))
   })
 
@@ -69,4 +75,4 @@ function loginViaWarframe(parent) {
   return promise
 }
 
-module.exports = { loginViaWarframe, USER_DATA_URL }
+module.exports = { loginViaWarframe }

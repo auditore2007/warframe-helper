@@ -27,9 +27,9 @@ function AddGoal({ items }: { items: Item[] }) {
     <div style={{ position: 'relative', maxWidth: 520 }}>
       <SearchBox value={query} onChange={setQuery} placeholder="Добавить цель: фрейм или оружие" />
       {results.length > 0 && (
-        <div className="panel stack" style={{ position: 'absolute', zIndex: 5, left: 0, right: 0, top: 46, padding: 6, gap: 2 }}>
+        <div className="dropdown">
           {results.map((i) => (
-            <button key={i.uniqueName} className="nav__link" onClick={() => { update((s) => toggleGoal(s, i.uniqueName)); setQuery('') }}>
+            <button key={i.uniqueName} className="dropdown__item" onClick={() => { update((s) => toggleGoal(s, i.uniqueName)); setQuery('') }}>
               <Icon name="plus" size={15} />{i.name}
             </button>
           ))}

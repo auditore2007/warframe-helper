@@ -47,7 +47,6 @@ contextBridge.exposeInMainWorld('wf', {
   },
   loginWarframe: () => ipcRenderer.invoke('account:login'),
   parseAccountId: (text) => ipcRenderer.invoke('account:parse', text),
-  openUserDataPage: () => ipcRenderer.invoke('account:userDataPage'),
   focusWindow: () => ipcRenderer.invoke('window:focus'),
   toggleOverlay: () => ipcRenderer.invoke('overlay:toggle'),
   hideOverlay: () => ipcRenderer.invoke('overlay:hide'),

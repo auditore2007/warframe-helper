@@ -65,11 +65,12 @@ function Linked({ logName }: { logName: string | null }) {
 function NotLinked({ logName }: { logName: string | null }) {
   const { update } = useProgress()
   const [platform, setPlatform] = useState<Platform>('pc')
-  const [pasted, setPasted] = useState('')
+  const [manual, setManual] = useState('')
+  const [showManual, setShowManual] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const link = (accountId: string) => update((s) => setAccount(s, { accountId, platform, displayName: logName }))
+  const link = (accountId: string, displayName: string | null) => update((s) => setAccount(s, { accountId, platform, displayName: displayName ?? logName }))
 
   const login = async () => {
     if (!window.wf) return
@@ -77,47 +78,51 @@ function NotLinked({ logName }: { logName: string | null }) {
     setMessage(null)
     const res = await window.wf.loginWarframe()
     setBusy(false)
-    if (res.ok && res.accountId) link(res.accountId)
-    else setMessage(res.error === 'Окно входа закрыто' ? null : res.error ?? 'Не получилось')
+    if (res.ok && res.accountId) link(res.accountId, res.displayName ?? null)
+    else if (res.error !== 'Окно входа закрыто') setMessage(res.error ?? 'Не получилось войти')
   }
 
-  const tryPasted = async (text: string) => {
-    setPasted(text)
-    if (!text.trim() || !window.wf) return setMessage(null)
-    const id = await window.wf.parseAccountId(text)
-    if (id) link(id)
-    else setMessage('Не нашёл тут ID. Нужна строка user_id (24 символа, цифры и a-f).')
+  const saveManual = async () => {
+    const id = window.wf ? await window.wf.parseAccountId(manual) : null
+    if (id) link(id, null)
+    else setMessage('ID - это 24 символа: цифры и буквы a-f.')
   }
 
   return (
     <Orokin>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2>Привязка аккаунта</h2>
-        <select className="input" value={platform} onChange={(e) => setPlatform(e.target.value as Platform)} aria-label="Платформа">
-          {PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-        </select>
-      </div>
-      {logName && <p className="small muted" style={{ margin: '4px 0 0' }}>В игре на этом компе последним заходил <span className="gold">{logName}</span>.</p>}
-
-      <div className="grid grid--2" style={{ marginTop: 16 }}>
+      <div className="link-panel">
         <div>
-          <div className="meta-label">Быстро</div>
-          <button className="btn btn--gold" onClick={login} disabled={busy || !window.wf}>
-            <Icon name="user" size={16} />{busy ? 'Жду вход...' : 'Войти через warframe.com'}
-          </button>
-          <p className="small faint">
-            Откроется обычная страница входа DE. Пароль вводишь там, приложение его не видит и забирает только ID аккаунта. После входа окно закроется само.
+          <h2>Привяжи аккаунт</h2>
+          <p className="muted" style={{ marginTop: 8 }}>
+            Тогда тут появятся твой MR, вкачанные предметы и репутация синдикатов.
+            {logName && <> В игре на этом компьютере последним был <span className="gold">{logName}</span>.</>}
           </p>
         </div>
-        <div>
-          <div className="meta-label">Если уже залогинен в браузере</div>
-          <button className="btn" onClick={() => void window.wf?.openUserDataPage()}><Icon name="external" size={15} />Открыть страницу с ID</button>
-          <textarea className="input" rows={2} style={{ marginTop: 8, resize: 'vertical' }} value={pasted}
-            onChange={(e) => void tryPasted(e.target.value)}
-            placeholder="Скопируй всё со страницы (Ctrl+A, Ctrl+C) и вставь сюда. Или просто ID" aria-label="ID аккаунта или текст страницы" />
+        <div className="link-panel__action">
+          <button className="btn btn--gold btn--big" onClick={login} disabled={busy || !window.wf}>
+            {busy ? 'Жду, пока войдёшь...' : 'Войти через warframe.com'}
+          </button>
+          <p className="small faint" style={{ margin: 0 }}>
+            Откроется страница входа Warframe. Можно войти через Steam, PlayStation, Xbox, Switch или Epic. Пароль вводишь на сайте DE, приложение его не видит.
+          </p>
+          <div className="row small" style={{ gap: 12 }}>
+            <label className="row" style={{ gap: 6 }}>
+              <span className="muted">Платформа</span>
+              <select className="input" value={platform} onChange={(e) => setPlatform(e.target.value as Platform)}>
+                {PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+            </label>
+            <button className="btn btn--ghost small" onClick={() => setShowManual((v) => !v)}>Есть ID аккаунта?</button>
+          </div>
+          {showManual && (
+            <div className="row">
+              <input className="input" style={{ flex: 1 }} value={manual} onChange={(e) => setManual(e.target.value)} placeholder="24 символа" aria-label="ID аккаунта" />
+              <button className="btn" onClick={() => void saveManual()}>Привязать</button>
+            </div>
+          )}
+          {message && <p className="small" role="alert" style={{ color: 'var(--kuva)', margin: 0 }}>{message}</p>}
         </div>
       </div>
-      {message && <p className="small" role="alert" style={{ color: 'var(--kuva)', marginTop: 12 }}>{message}</p>}
     </Orokin>
   )
 }

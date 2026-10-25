@@ -1,106 +1,115 @@
 import { Link } from 'react-router-dom'
-import { useWorld } from '../hooks/useCatalog'
+import { useMemo } from 'react'
+import { useFrames, useWeapons, useWorld } from '../hooks/useCatalog'
 import { useNow } from '../hooks/useNow'
 import { CycleStrip } from '../components/CycleStrip'
 import { Checklist } from '../components/Checklist'
 import { ErrorState, Freshness, Loading, Orokin } from '../components/ui'
+import { Icon } from '../components/Icon'
+import { TimerList } from './Foundry'
 import { formatCountdown, msUntil } from '../lib/time'
-import { missionRu, factionRu } from '../lib/i18n'
+import { missionRu } from '../lib/i18n'
+import { countOwnedParts } from '../lib/progress'
+import { isResourceComponent } from '../lib/parts'
+import { teshinRu } from '../data/rotations'
 import { usePlayer, useProgress } from '../state/AppState'
-import { GUIDES } from '../data/guides'
 import type { WorldState } from '../lib/types'
 
 const DATE_FMT = new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })
+const GOALS_SHOWN = 3
 
-function WeekAtGlance({ world, now }: { world: WorldState; now: number }) {
+function greeting(now: number): string {
+  const h = new Date(now).getHours()
+  if (h < 5) return 'Доброй ночи'
+  if (h < 12) return 'Доброе утро'
+  if (h < 18) return 'Добрый день'
+  return 'Добрый вечер'
+}
+
+export const openSearch = () => window.dispatchEvent(new CustomEvent('wfh:search'))
+
+function Week({ world, now }: { world: WorldState; now: number }) {
   const baro = world.voidTrader
   const baroHere = baro && msUntil(baro.activation, now) <= 0
   const rows = [
-    {
-      label: 'Вылазка',
-      value: world.sortie ? world.sortie.variants.map((v) => missionRu(v.missionType)).join(', ') : '-',
-      left: world.sortie?.expiry,
-    },
-    {
-      label: 'Охота на Архонта',
-      value: world.archonHunt ? world.archonHunt.boss ?? world.archonHunt.missions.map((m) => missionRu(m.type)).join(', ') : '-',
-      left: world.archonHunt?.expiry,
-    },
-    {
-      label: 'Магазин Тешина',
-      value: world.steelPath?.currentReward?.name ?? '-',
-      left: world.steelPath?.expiry,
-    },
-    {
-      label: 'Баро Ки\'Тиир',
-      value: baro ? (baroHere ? `Сейчас на ${baro.location}` : `Прилетит на ${baro.location}`) : '-',
-      left: baro ? (baroHere ? baro.expiry : baro.activation) : undefined,
-      live: baroHere,
-    },
+    { label: 'Вылазка', value: world.sortie?.variants.map((v) => missionRu(v.missionType)).join(', '), left: world.sortie?.expiry, to: '/world' },
+    { label: 'Архонт', value: world.archonHunt?.boss, left: world.archonHunt?.expiry, to: '/rotations' },
+    { label: 'Тешин', value: world.steelPath?.currentReward ? teshinRu(world.steelPath.currentReward.name) : undefined, left: world.steelPath?.expiry, to: '/rotations' },
+    { label: 'Баро', value: baro ? (baroHere ? `сейчас на ${baro.location}` : 'ещё в пути') : undefined, left: baro ? (baroHere ? baro.expiry : baro.activation) : undefined, to: '/baro', live: baroHere },
   ]
   return (
-    <div>
+    <ul className="clean week">
       {rows.map((r) => (
-        <div key={r.label} className="mini-stat">
-          <span>
-            <span style={{ display: 'block' }}>{r.label}</span>
-            <span className="small muted">{r.value}</span>
-          </span>
-          <span className={`num small ${r.live ? '' : 'muted'}`} style={{ whiteSpace: 'nowrap', color: r.live ? 'var(--lotus)' : undefined }}>
-            {r.left ? formatCountdown(msUntil(r.left, now)) : ''}
-          </span>
-        </div>
+        <li key={r.label}>
+          <Link to={r.to} className="week__row">
+            <span className="week__label">{r.label}</span>
+            <span className="week__value">{r.value ?? '-'}</span>
+            <span className={`num week__left ${r.live ? 'is-live' : ''}`}>{r.left ? formatCountdown(msUntil(r.left, now)) : ''}</span>
+          </Link>
+        </li>
       ))}
-    </div>
+    </ul>
   )
 }
 
-function PlayerCard() {
+function Goals() {
   const { progress } = useProgress()
-  const { profile, status } = usePlayer()
-  if (!progress.account) {
-    return (
-      <Orokin small>
-        <h3 style={{ marginBottom: 8 }}>Твой прогресс</h3>
-        <p className="muted small">Привяжи аккаунт Warframe: приложение само найдёт его в логе игры и покажет ранг мастерства и вкачанные предметы.</p>
-        <Link to="/tracker" className="btn btn--gold">Привязать аккаунт</Link>
-      </Orokin>
-    )
+  const { frames } = useFrames()
+  const { weapons } = useWeapons()
+  const items = useMemo(() => new Map([...frames, ...weapons].map((i) => [i.uniqueName, i])), [frames, weapons])
+  const goals = progress.goals.map((id) => items.get(id)).filter((i) => i !== undefined).slice(0, GOALS_SHOWN)
+  if (progress.goals.length === 0) {
+    return <p className="small muted" style={{ margin: 0 }}>Целей нет. Добавь фрейм или оружие в <Link to="/planner">планировщике</Link>, и тут будет видно, сколько осталось собрать.</p>
   }
-  const mastered = profile?.items.length ?? 0
   return (
-    <Orokin small>
-      <div className="row" style={{ gap: 16 }}>
-        <span className="mr-badge"><span>{profile?.masteryRank ?? '–'}</span></span>
-        <div>
-          <h3>{profile?.displayName ?? progress.account.displayName ?? 'Тэнно'}</h3>
-          <span className="small muted">{status === 'loading' ? 'Синхронизация профиля…' : `${mastered} предметов в профиле`}</span>
-        </div>
-      </div>
-      <div className="mini-stat" style={{ marginTop: 10 }}>
-        <span>Цели в работе</span>
-        <span className="num">{progress.goals.length}</span>
-      </div>
-      <Link to="/tracker" className="btn" style={{ marginTop: 12 }}>Открыть трекер</Link>
-    </Orokin>
+    <div className="stack" style={{ gap: 12 }}>
+      {goals.map((item) => {
+        const parts = (item.components ?? []).filter((c) => !isResourceComponent(c)).map((c) => c.name)
+        const owned = countOwnedParts(progress, item.uniqueName, parts)
+        return (
+          <Link key={item.uniqueName} to="/planner" className="goal">
+            <span className="row" style={{ justifyContent: 'space-between' }}>
+              <span>{item.name}</span>
+              <span className="small num muted">{owned} / {parts.length}</span>
+            </span>
+            <span className="bar"><i style={{ width: `${parts.length ? (owned / parts.length) * 100 : 0}%` }} /></span>
+          </Link>
+        )
+      })}
+      {progress.goals.length > GOALS_SHOWN && <Link to="/planner" className="small">Все цели ({progress.goals.length})</Link>}
+    </div>
   )
 }
 
 export function Home() {
   const now = useNow(1000)
   const { data: world, loading, error, stale, fetchedAt, refresh } = useWorld()
-  const fissures = world?.fissures?.filter((f) => !f.isStorm) ?? []
-  const steel = fissures.filter((f) => f.isHard).length
+  const { progress } = useProgress()
+  const { profile } = usePlayer()
+  const name = profile?.displayName ?? progress.account?.displayName ?? 'Тэнно'
 
   return (
     <div className="page">
-      <header className="hero reveal">
+      <header className="home-head">
         <div>
-          <h1>Система Origin</h1>
-          <div className="hero__date">{DATE_FMT.format(now)}</div>
+          <h1>{greeting(now)}, {name}</h1>
+          <div className="home-head__date">{DATE_FMT.format(now)}{world && <> <Freshness fetchedAt={fetchedAt} stale={stale} now={now} onRefresh={refresh} /></>}</div>
         </div>
-        {world && <Freshness fetchedAt={fetchedAt} stale={stale} now={now} onRefresh={refresh} />}
+        <div className="row">
+          <button className="btn" onClick={openSearch}><Icon name="search" size={16} />Найти предмет</button>
+          {window.wf && <button className="btn" onClick={() => void window.wf?.scanRewards()} title="То же, что Ctrl+Alt+R в игре"><Icon name="relic" size={16} />Скан наград</button>}
+          {window.wf && <button className="btn" onClick={() => void window.wf?.toggleOverlay()}><Icon name="overlay" size={16} />Оверлей</button>}
+        </div>
       </header>
+
+      {!progress.account && (
+        <Orokin small className="home-link">
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <span>Привяжи аккаунт Warframe, чтобы видеть свой MR, репутацию синдикатов и что ещё не вкачано.</span>
+            <Link to="/tracker" className="btn btn--gold">Привязать</Link>
+          </div>
+        </Orokin>
+      )}
 
       {loading && !world && <Loading rows={1} height={150} />}
       {error && !world && <ErrorState message={error} onRetry={refresh} />}
@@ -112,45 +121,25 @@ export function Home() {
           <Checklist now={now} />
         </section>
         <div className="stack" style={{ gap: 20 }}>
-          <PlayerCard />
           {world && (
             <section className="panel">
-              <div className="section-head" style={{ marginBottom: 4 }}>
-                <h3>Эта неделя</h3>
-                <Link to="/world" className="small">Подробнее</Link>
-              </div>
-              <WeekAtGlance world={world} now={now} />
+              <h3 style={{ marginBottom: 6 }}>Эта неделя</h3>
+              <Week world={world} now={now} />
             </section>
           )}
-          {world && (
-            <Link to="/world" className="panel" style={{ textDecoration: 'none', color: 'inherit' }}>
-              <div className="row" style={{ justifyContent: 'space-between' }}>
-                <span>Разломы Бездны</span>
-                <span className="num">{fissures.length}</span>
-              </div>
-              <div className="small muted">Из них {steel} на Стальном пути</div>
-              {world.arbitration && !world.arbitration.expired && (
-                <div className="small muted">Арбитраж: {missionRu(world.arbitration.type)}, {factionRu(world.arbitration.enemy)}</div>
-              )}
-            </Link>
-          )}
+          <section className="panel">
+            <div className="section-head" style={{ marginBottom: 10 }}>
+              <h3>Литейная</h3>
+              <Link to="/foundry" className="small">Добавить таймер</Link>
+            </div>
+            <TimerList compact />
+          </section>
+          <section className="panel">
+            <h3 style={{ marginBottom: 12 }}>Цели</h3>
+            <Goals />
+          </section>
         </div>
       </div>
-
-      <section className="section">
-        <div className="section-head">
-          <h2>С чего начать</h2>
-          <Link to="/guides" className="small">Все гайды</Link>
-        </div>
-        <div className="grid grid--3">
-          {GUIDES.slice(0, 3).map((g) => (
-            <Link key={g.id} to={`/guides/${g.id}`} className="guide-card">
-              <h3>{g.title}</h3>
-              <p>{g.summary}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
     </div>
   )
 }

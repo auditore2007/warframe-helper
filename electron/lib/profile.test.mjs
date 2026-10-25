@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import profile from './profile.cjs'
 import apiPath from './apiPath.cjs'
-const { extractAccountFromLog, parseProfile, profileUrls, isAccountId, accountIdFromUserData } = profile
+const { extractAccountFromLog, parseProfile, profileUrls, isAccountId, accountIdFromUserData, accountFromUserInfoCookie } = profile
 const { isAllowedApiPath, cacheFileName } = apiPath
 
 const A = 'aaaaaaaaaaaaaaaaaaaaaaaa'
@@ -94,5 +94,19 @@ describe('accountIdFromUserData', () => {
     expect(accountIdFromUserData('')).toBeNull()
     expect(accountIdFromUserData('{"user_id":null}')).toBeNull()
     expect(accountIdFromUserData(`{"x":"${A}","y":"${B}"}`)).toBeNull()
+  })
+})
+
+describe('accountFromUserInfoCookie', () => {
+  const cookie = (obj) => encodeURIComponent(JSON.stringify(obj))
+  it('reads the id and name from the warframe.com user-info cookie', () => {
+    expect(accountFromUserInfoCookie(cookie({ userId: A, displayName: 'Tenno', masteryRank: 22 }))).toEqual({ accountId: A, displayName: 'Tenno' })
+    expect(accountFromUserInfoCookie(cookie({ user_id: B.toUpperCase(), display_name: 'X' }))).toEqual({ accountId: B, displayName: 'X' })
+  })
+  it('returns null for logged out or broken cookies', () => {
+    expect(accountFromUserInfoCookie(cookie(null))).toBeNull()
+    expect(accountFromUserInfoCookie('%7Bbad')).toBeNull()
+    expect(accountFromUserInfoCookie(cookie({ userId: 12345 }))).toBeNull()
+    expect(accountFromUserInfoCookie(undefined)).toBeNull()
   })
 })

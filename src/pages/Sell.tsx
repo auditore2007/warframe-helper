@@ -30,9 +30,9 @@ function AddItem({ items }: { items: MarketItem[] }) {
     <div style={{ position: 'relative', maxWidth: 520 }}>
       <SearchBox value={query} onChange={setQuery} placeholder="Добавить предмет: часть, мод, мистификатор" />
       {results.length > 0 && (
-        <div className="panel stack" style={{ position: 'absolute', zIndex: 5, left: 0, right: 0, top: 46, padding: 6, gap: 2 }}>
+        <div className="dropdown">
           {results.map((i) => (
-            <button key={i.slug} className="nav__link" onClick={() => add(i.slug)}>
+            <button key={i.slug} className="dropdown__item" onClick={() => add(i.slug)}>
               <Icon name="plus" size={15} />
               <span>{i.ru ?? i.en}{i.ru && <span className="faint small"> · {i.en}</span>}</span>
             </button>

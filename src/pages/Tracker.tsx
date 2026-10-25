@@ -38,8 +38,8 @@ function Goals({ catalog }: { catalog: Map<string, Item> }) {
   const { progress, update } = useProgress()
   if (progress.goals.length === 0) {
     return (
-      <EmptyState title="Целей пока нет" action={<Link to="/frames" className="btn">Выбрать фрейм</Link>}>
-        Открой любой фрейм или оружие и нажми «Добавить в цели» - здесь появится, что ещё осталось собрать.
+      <EmptyState title="Целей пока нет" action={<Link to="/planner" className="btn">Открыть планировщик</Link>}>
+        Добавь фрейм или оружие в планировщике, и тут будет видно, что ещё осталось собрать.
       </EmptyState>
     )
   }
@@ -98,7 +98,7 @@ export function Tracker() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>Трекер</h1>
+          <h1>Аккаунт и цели</h1>
           <p>Мастерство берётся из профиля, цели и части хранятся у тебя на компьютере.</p>
         </div>
       </div>

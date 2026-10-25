@@ -16,6 +16,8 @@ import { keyToAccelerator, acceleratorLabel } from './hotkeys'
 import { setWatch, removeWatch, watchCheck } from './watchlist'
 import { masteryPointsOf, sourceOf, masteryTodo } from './mastery'
 import { ducatDeals, matchBaroItems } from './baro'
+import { sectionOf } from '../data/navigation'
+import { searchEntries } from './search'
 import type { Item, MarketItem, RelicItem } from './types'
 
 const HOUR = 60 * 60 * 1000
@@ -322,5 +324,28 @@ describe('baro', () => {
     const items = [mi('primed_fury', 'Primed Fury', null), mi('x', 'Other', null)]
     const inv = [{ item: 'Primed Fury', ducats: 350, credits: 110000 }, { item: 'Prisma Grakata', ducats: 600, credits: 200000 }]
     expect(matchBaroItems(inv, items).map((r) => [r.name, r.market?.slug ?? null])).toEqual([['Primed Fury', 'primed_fury'], ['Prisma Grakata', null]])
+  })
+})
+
+describe('navigation sections', () => {
+  it('finds the section of any page, including detail pages', () => {
+    expect(sectionOf('/').id).toBe('home')
+    expect(sectionOf('/frames/%2FLotus%2FSaryn').id).toBe('arsenal')
+    expect(sectionOf('/settings').id).toBe('me')
+    expect(sectionOf('/guides/roadmap').id).toBe('home')
+    expect(sectionOf('/nope').id).toBe('home')
+  })
+})
+
+describe('global search', () => {
+  const e = (label: string, alt?: string) => ({ label, alt, hint: '', to: '/' + label, group: 'g' })
+  const entries = [e('Сарина Прайм', 'saryn prime'), e('Сарина', 'saryn'), e('Ревенант Прайм', 'revenant prime'), e('Сома Прайм: Ствол', 'soma prime barrel')]
+  it('ranks names that start with the query first and shorter names above longer', () => {
+    expect(searchEntries('сари', entries, 5).map((x) => x.label)).toEqual(['Сарина', 'Сарина Прайм'])
+    expect(searchEntries('прайм', entries, 5).map((x) => x.label)).toEqual(['Сарина Прайм', 'Ревенант Прайм', 'Сома Прайм: Ствол'])
+  })
+  it('matches the english name and ignores short queries', () => {
+    expect(searchEntries('barrel', entries, 5).map((x) => x.label)).toEqual(['Сома Прайм: Ствол'])
+    expect(searchEntries('с', entries, 5)).toEqual([])
   })
 })

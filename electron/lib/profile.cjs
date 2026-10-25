@@ -103,4 +103,23 @@ function accountIdFromUserData(text) {
   return m ? m[1].toLowerCase() : null
 }
 
-module.exports = { isAccountId, extractAccountFromLog, profileUrls, parseProfile, accountIdFromUserData }
+const ID_KEYS = ['userId', 'user_id', 'accountId', 'account_id']
+const NAME_KEYS = ['displayName', 'display_name']
+
+// после входа сайт кладёт в cookie user-info JSON с данными игрока
+function accountFromUserInfoCookie(value) {
+  if (typeof value !== 'string' || !value) return null
+  let data
+  try {
+    data = JSON.parse(decodeURIComponent(value))
+  } catch {
+    return null
+  }
+  if (!data || typeof data !== 'object') return null
+  const rawId = ID_KEYS.map((k) => data[k]).find((v) => typeof v === 'string' && isAccountId(v.toLowerCase()))
+  if (!rawId) return null
+  const name = NAME_KEYS.map((k) => data[k]).find((v) => typeof v === 'string' && v)
+  return { accountId: rawId.toLowerCase(), displayName: name || null }
+}
+
+module.exports = { isAccountId, extractAccountFromLog, profileUrls, parseProfile, accountIdFromUserData, accountFromUserInfoCookie }
