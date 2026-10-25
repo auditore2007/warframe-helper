@@ -7,7 +7,7 @@ const { gameLanguageFromLog, matchReward } = require('./lib/rewards.cjs')
 // у формы нет слага на маркете, добавляем руками
 const FORMA = { slug: null, names: ['Forma Blueprint', 'Чертеж: Форма', 'Форма Чертеж'] }
 
-// deps: catalogGet, marketItems, marketPrices, readLogTail, userData
+// deps: catalogGet, marketItems, marketPrices, readLogTail, userData, getArea
 function createRewardScanner(deps) {
   let candidates = null
   let running = null
@@ -34,7 +34,8 @@ function createRewardScanner(deps) {
     const bySlug = new Map(items.ok ? items.data.map((i) => [i.slug, i]) : [])
     const lang = gameLanguageFromLog(await deps.readLogTail())
     const ocrDir = OCR_DIR(deps.userData)
-    const columns = await readRewardColumns({ lang, cacheDir: ocrDir, debugFile: path.join(ocrDir, 'last-rewards.png'), image })
+    const area = deps.getArea ? deps.getArea() : undefined
+    const columns = await readRewardColumns({ lang, cacheDir: ocrDir, debugFile: path.join(ocrDir, 'last-rewards.png'), image, area })
     const cands = await getCandidates(bySlug)
     const prices = await deps.marketPrices(null)
     const priceOf = (slug) => (prices.ok && slug && prices.data[slug] ? prices.data[slug].median : null)

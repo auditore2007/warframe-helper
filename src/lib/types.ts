@@ -52,6 +52,8 @@ export interface Item {
   polarities?: string[]
   releaseDate?: string
   buildPrice?: number
+  bpCost?: number
+  marketCost?: number
   buildTime?: number
   totalDamage?: number
   criticalChance?: number
@@ -327,6 +329,62 @@ export interface RewardScan {
 
 export type RewardEvent = { type: 'result'; data: RewardScan } | { type: 'status'; data: { busy: boolean } }
 
+export interface AppSettings {
+  closeToTray: boolean
+  autostart: boolean
+  hotkeys: { overlay: string; rewards: string }
+  rewardArea: { x: number; y: number; w: number; h: number }
+  lookup: { enabled: boolean; mode: 'hover' | 'click'; delayMs: number }
+  notify: { foundry: boolean; watchlist: boolean }
+}
+
+export interface SettingsState {
+  settings: AppSettings
+  failedHotkeys: string[]
+}
+
+export interface LookupLine {
+  text: string
+  /** смещение центра строки от курсора, в точках экрана */
+  dx: number
+  dy: number
+}
+
+export interface RivenWeapon {
+  slug: string
+  en: string
+  ru: string | null
+  type: string | null
+  disposition: number | null
+}
+
+export interface RivenAttribute {
+  slug: string
+  en: string
+  ru: string | null
+  unit: string | null
+  positiveOnly: boolean
+  negativeOnly: boolean
+  exclusiveTo: string[] | null
+}
+
+export interface RivenAuction {
+  id: string
+  price: number
+  seller: string
+  status: string
+  name: string
+  rerolls: number
+  mastery: number
+  attributes: { slug: string; value: number; positive: boolean }[]
+}
+
+export interface RivenQuery {
+  weapon: string
+  positive: string[]
+  negative: string | null
+}
+
 export interface Bridge {
   apiGet: (path: string, ttlSeconds?: number, force?: boolean) => Promise<ApiResult<unknown>>
   catalog: <K extends CatalogName>(name: K, force?: boolean) => Promise<ApiResult<CatalogMap[K]>>
@@ -337,6 +395,18 @@ export interface Bridge {
   buildsList: (itemName: string) => Promise<ApiResult<BuildSummary[]>>
   buildDetail: (id: number) => Promise<ApiResult<BuildDetail>>
   scanRewards: () => Promise<RewardScan>
+  rivenWeapons: () => Promise<ApiResult<RivenWeapon[]>>
+  rivenAttributes: () => Promise<ApiResult<RivenAttribute[]>>
+  rivenAuctions: (query: RivenQuery) => Promise<ApiResult<RivenAuction[]>>
+  getSettings: () => Promise<SettingsState>
+  setSettings: (patch: Partial<AppSettings>) => Promise<SettingsState>
+  onSettings: (cb: (s: AppSettings) => void) => () => void
+  notify: (payload: { title: string; body: string; hash?: string; kind?: 'foundry' | 'watchlist' }) => Promise<void>
+  onNavigate: (cb: (hash: string) => void) => () => void
+  onLookupLines: (cb: (data: { lines: LookupLine[] }) => void) => () => void
+  showLookup: (size: { width: number; height: number }) => Promise<void>
+  hideLookup: () => Promise<void>
+  openLastLookup: () => Promise<string>
   openLastScan: () => Promise<string>
   onRewards: (cb: (e: RewardEvent) => void) => () => void
   loginWarframe: () => Promise<{ ok: boolean; accountId?: string; error?: string }>

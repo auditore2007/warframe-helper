@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMods, useWeapons } from '../hooks/useCatalog'
-import { calcDamage, type DamageType, type WeaponStats } from '../lib/damage'
+import { calcDamage, factionMultiplier, type DamageResult, type DamageType, type WeaponStats } from '../lib/damage'
+import { FACTIONS } from '../data/factions'
 import { wikiKey } from '../lib/text'
 import { CALC_MODS, MAX_MOD_SLOTS, type CalcMod, type WeaponClass } from '../data/damageMods'
 import type { Item } from '../lib/types'
@@ -15,6 +16,7 @@ const TYPE_LABEL: Record<DamageType, string> = {
 const DAMAGE_KEYS = Object.keys(TYPE_LABEL) as DamageType[]
 
 function classOf(w: Item): WeaponClass {
+  if (w.category === 'Melee') return 'melee'
   if (w.category === 'Secondary') return 'pistol'
   return w.type === 'Shotgun' ? 'shotgun' : 'rifle'
 }
@@ -38,6 +40,33 @@ const n0 = (v: number) => Math.round(v).toLocaleString('ru-RU')
 const n1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString('ru-RU')
 const pct = (v: number) => `${(Math.round(v * 1000) / 10).toLocaleString("ru-RU")}%`
 
+// урон по каждой фракции: слабость x1.5, сопротивление x0.5 по каждому типу урона
+function FactionTable({ result }: { result: DamageResult }) {
+  const rows = FACTIONS.map((f) => ({ f, mult: factionMultiplier(result.damage, f) })).sort((a, b) => b.mult - a.mult)
+  return (
+    <section className="panel">
+      <h3 style={{ marginBottom: 8 }}>Урон по фракциям</h3>
+      <table className="table">
+        <thead><tr><th>Фракция</th><th className="right">Множитель</th><th className="right">ДПС</th><th className="small">Слабость / сопротивление</th></tr></thead>
+        <tbody>
+          {rows.map(({ f, mult }) => (
+            <tr key={f.id}>
+              <td>{f.name}</td>
+              <td className="right num" style={{ color: mult > 1.001 ? 'var(--lotus)' : mult < 0.999 ? 'var(--kuva)' : undefined }}>x{mult.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}</td>
+              <td className="right num">{n0(result.sustainedDps * mult)}</td>
+              <td className="small faint">
+                {f.weak.map((t) => TYPE_LABEL[t]).join(', ')}
+                {f.resist.length > 0 && <span style={{ color: 'var(--kuva)' }}> / {f.resist.map((t) => TYPE_LABEL[t]).join(', ')}</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="small faint" style={{ marginBottom: 0 }}>Броня, щиты и статусы (Коррозия, Вирус, Жар) не учтены. Таблица слабостей с вики, урон 2.0.</p>
+    </section>
+  )
+}
+
 export function Calculator() {
   const { weapons, loading } = useWeapons()
   const { data: catalogMods } = useMods()
@@ -45,7 +74,7 @@ export function Calculator() {
   const [picked, setPicked] = useState<string[]>([])
 
   const guns = useMemo(
-    () => weapons.filter((w) => (w.category === 'Primary' || w.category === 'Secondary') && w.damage && w.fireRate).sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+    () => weapons.filter((w) => ['Primary', 'Secondary', 'Melee'].includes(w.category) && w.damage && w.fireRate).sort((a, b) => a.name.localeCompare(b.name, 'ru')),
     [weapons],
   )
   const ruName = useMemo(() => new Map((catalogMods ?? []).map((m) => [wikiKey(m.wikiaUrl), m.name])), [catalogMods])
@@ -70,7 +99,7 @@ export function Calculator() {
       <div className="page-head">
         <div>
           <h1>Калькулятор урона</h1>
-          <p>Выбери пушку и моды, увидишь урон по типам и ДПС. Порядок модов важен: стихии смешиваются слева направо, как в игре.</p>
+          <p>Выбери оружие и моды, увидишь урон по типам, ДПС и урон по каждой фракции. Порядок модов важен: стихии смешиваются слева направо, как в игре.</p>
         </div>
       </div>
       <div className="row" style={{ marginBottom: 20 }}>
@@ -78,7 +107,7 @@ export function Calculator() {
           <option value="">{loading ? 'Загружаю оружие...' : 'Выбери оружие'}</option>
           {guns.map((w) => <option key={w.uniqueName} value={w.uniqueName}>{w.name}</option>)}
         </select>
-        {weapon && <span className="small muted">Ближний бой пока не считается, только стрелковое.</span>}
+        {weapon && classOf(weapon) === 'melee' && <span className="small muted">Ближний бой без комбо и условных модов: скорость атаки вместо скорострельности.</span>}
       </div>
       {loading && guns.length === 0 && <Loading rows={3} height={60} />}
       {!weapon && !loading && <EmptyState title="Оружие не выбрано">Например, Сома Прайм или Нюкор Кува.</EmptyState>}
@@ -141,8 +170,9 @@ export function Calculator() {
                   ))}
                 </tbody>
               </table>
-              <p className="small faint" style={{ marginBottom: 0 }}>Без учёта брони, фракций, ривенов, аркан и условных бонусов (Galvanized и т.п.). Для сравнения сборок между собой хватает.</p>
+              <p className="small faint" style={{ marginBottom: 0 }}>Без учёта брони, ривенов, аркан и условных бонусов (Galvanized, Blood Rush и т.п.). Для сравнения сборок между собой хватает.</p>
             </section>
+            <FactionTable result={modded} />
           </div>
         </div>
       )}

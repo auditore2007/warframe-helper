@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { calcDamage, combineElements, type WeaponStats } from './damage'
+import { calcDamage, combineElements, factionMultiplier, type WeaponStats } from './damage'
+import { FACTIONS } from '../data/factions'
 
 const soma: WeaponStats = {
   damage: { impact: 1.2, puncture: 4.8, slash: 6 },
@@ -50,5 +51,16 @@ describe('calcDamage', () => {
     const r = calcDamage(soma, [{ fireRate: 0.6 }, { status: 0.9 }, { fireRate: -0.2 }])
     expect(r.fireRate).toBeCloseTo(21, 5)
     expect(r.statusChance).toBeCloseTo(0.19, 5)
+  })
+})
+
+describe('factionMultiplier', () => {
+  const grineer = FACTIONS.find((f) => f.id === 'grineer')!
+  const kuva = FACTIONS.find((f) => f.id === 'kuva')!
+  it('weights each damage type by the faction weakness', () => {
+    expect(factionMultiplier({ impact: 10, slash: 10 }, grineer)).toBeCloseTo(1.25, 5)
+    expect(factionMultiplier({ heat: 10 }, kuva)).toBeCloseTo(0.5, 5)
+    expect(factionMultiplier({ corrosive: 30, heat: 10 }, kuva)).toBeCloseTo((45 + 5) / 40, 5)
+    expect(factionMultiplier({}, grineer)).toBe(1)
   })
 })

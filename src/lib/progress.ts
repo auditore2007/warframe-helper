@@ -15,6 +15,12 @@ export interface CollectionEntry {
 export const SHARD_COLORS = ['crimson', 'amber', 'azure', 'emerald', 'topaz', 'violet'] as const
 export type ShardColor = (typeof SHARD_COLORS)[number]
 
+export interface WatchEntry {
+  target: number
+  // по какой цене уже уведомили, чтобы не спамить
+  notifiedAt: number | null
+}
+
 export interface ShardSlot {
   color: ShardColor
   // номер бонуса
@@ -45,6 +51,8 @@ export interface ProgressState {
   collection: Record<string, CollectionEntry>
   // фрейм -> 5 слотов
   shards: Record<string, (ShardSlot | null)[]>
+  // slug -> за какую цену хочу купить
+  watch: Record<string, WatchEntry>
 }
 
 export const EMPTY_PROGRESS: ProgressState = {
@@ -59,6 +67,7 @@ export const EMPTY_PROGRESS: ProgressState = {
   sell: {},
   collection: {},
   shards: {},
+  watch: {},
 }
 
 export const partKey = (uniqueName: string, component: string): string => `${uniqueName}::${component}`
@@ -125,6 +134,7 @@ export function parseProgress(raw: string | null): ProgressState {
       sell: parseSell(value.sell),
       collection: parseCollection(value.collection),
       shards: parseShards(value.shards),
+      watch: parseWatch(value.watch),
     }
   } catch {
     return EMPTY_PROGRESS
@@ -168,6 +178,16 @@ function parseShards(raw: unknown): Record<string, (ShardSlot | null)[]> {
   for (const [key, v] of Object.entries(raw)) {
     if (!Array.isArray(v)) continue
     out[key] = Array.from({ length: MAX_SHARD_SLOTS }, (_, i) => parseShardSlot(v[i]))
+  }
+  return out
+}
+
+function parseWatch(raw: unknown): Record<string, WatchEntry> {
+  if (!isObject(raw)) return {}
+  const out: Record<string, WatchEntry> = {}
+  for (const [slug, v] of Object.entries(raw)) {
+    if (!isObject(v) || typeof v.target !== 'number' || !(v.target > 0)) continue
+    out[slug] = { target: v.target, notifiedAt: typeof v.notifiedAt === 'number' ? v.notifiedAt : null }
   }
   return out
 }

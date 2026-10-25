@@ -12,7 +12,11 @@ import { wtsMessages, priceTrend } from './market'
 import { buildPlan } from './planner'
 import { rollCycle } from './cycles'
 import { gameBuildDate } from './time'
-import type { Item, RelicItem } from './types'
+import { keyToAccelerator, acceleratorLabel } from './hotkeys'
+import { setWatch, removeWatch, watchCheck } from './watchlist'
+import { masteryPointsOf, sourceOf, masteryTodo } from './mastery'
+import { ducatDeals, matchBaroItems } from './baro'
+import type { Item, MarketItem, RelicItem } from './types'
 
 const HOUR = 60 * 60 * 1000
 
@@ -235,5 +239,88 @@ describe('price trend', () => {
   it('handles empty and single-point series', () => {
     expect(priceTrend([])).toBeNull()
     expect(priceTrend([pt(1, 10)])).toEqual({ last: 10, changePct: 0, low: 10, high: 10, volume: 1 })
+  })
+})
+
+describe('hotkeys', () => {
+  const ev = (code: string, mods: Partial<Record<'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey', boolean>> = {}) =>
+    ({ code, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...mods })
+  it('turns key presses into electron accelerators', () => {
+    expect(keyToAccelerator(ev('KeyR', { ctrlKey: true, altKey: true }))).toBe('CommandOrControl+Alt+R')
+    expect(keyToAccelerator(ev('Digit3', { shiftKey: true }))).toBe('Shift+3')
+    expect(keyToAccelerator(ev('F8'))).toBe('F8')
+    expect(keyToAccelerator(ev('Space', { ctrlKey: true }))).toBe('CommandOrControl+Space')
+  })
+  it('ignores lone modifiers and plain letters', () => {
+    expect(keyToAccelerator(ev('ControlLeft', { ctrlKey: true }))).toBeNull()
+    expect(keyToAccelerator(ev('KeyR'))).toBeNull()
+  })
+  it('shows accelerators the way people write them', () => {
+    expect(acceleratorLabel('CommandOrControl+Alt+R')).toBe('Ctrl + Alt + R')
+  })
+})
+
+describe('watchlist', () => {
+  it('adds, updates and removes watched items', () => {
+    const a = setWatch(EMPTY_PROGRESS, 'saryn_prime_set', 60)
+    expect(a.watch).toEqual({ saryn_prime_set: { target: 60, notifiedAt: null } })
+    expect(setWatch(a, 'saryn_prime_set', 0)).toBe(a)
+    expect(removeWatch(a, 'saryn_prime_set').watch).toEqual({})
+  })
+  it('notifies once when the price drops to the target and again only on a new low', () => {
+    const w = { target: 60, notifiedAt: null }
+    expect(watchCheck(w, 70)).toEqual({ notify: false, next: w })
+    const first = watchCheck(w, 58)
+    expect(first).toEqual({ notify: true, next: { target: 60, notifiedAt: 58 } })
+    expect(watchCheck(first.next, 58).notify).toBe(false)
+    expect(watchCheck(first.next, 55)).toEqual({ notify: true, next: { target: 60, notifiedAt: 55 } })
+    expect(watchCheck(first.next, 65)).toEqual({ notify: false, next: { target: 60, notifiedAt: null } })
+    expect(watchCheck(w, null)).toEqual({ notify: false, next: w })
+  })
+  it('keeps watch entries from storage', () => {
+    const p = parseProgress(JSON.stringify({ version: 1, watch: { a: { target: 10, notifiedAt: 9 }, b: { target: -1 }, c: 5 } }))
+    expect(p.watch).toEqual({ a: { target: 10, notifiedAt: 9 } })
+  })
+})
+
+describe('mastery todo', () => {
+  const item = (o: Partial<Item>): Item => ({ uniqueName: '/' + (o.name ?? 'x'), name: 'x', category: 'Primary', ...o })
+  it('counts mastery points by rank cap and kind', () => {
+    expect(masteryPointsOf(item({ category: 'Warframes' }))).toBe(6000)
+    expect(masteryPointsOf(item({ category: 'Primary' }))).toBe(3000)
+    expect(masteryPointsOf(item({ category: 'Primary', maxLevelCap: 40 }))).toBe(4000)
+  })
+  it('tells where an item comes from', () => {
+    expect(sourceOf(item({ bpCost: 15000 } as Partial<Item>))).toBe('credits')
+    expect(sourceOf(item({ isPrime: true, vaulted: false }))).toBe('prime')
+    expect(sourceOf(item({ isPrime: true, vaulted: true }))).toBe('vaulted')
+    expect(sourceOf(item({ wikiaUrl: 'https://wiki.warframe.com/w/Kuva_Bramma' }))).toBe('lich')
+    expect(sourceOf(item({ components: [{ name: 'Chassis', uniqueName: '/Recipes/X', drops: [{ location: 'Venus/Fossa', chance: 38 }] }] }))).toBe('drops')
+    expect(sourceOf(item({}))).toBe('other')
+  })
+  it('splits unfinished items and sums what is left', () => {
+    const a = item({ name: 'a', bpCost: 1 } as Partial<Item>)
+    const b = item({ name: 'b', isPrime: true, vaulted: true })
+    const c = item({ name: 'c', category: 'Warframes' })
+    const xp = new Map([['/a', 500 * 10 * 10], ['/c', 1000 * 30 * 30]])
+    const todo = masteryTodo([a, b, c], xp)
+    expect(todo.leveling.map((t) => [t.item.name, t.rank])).toEqual([['a', 10]])
+    expect(todo.missing.map((t) => t.item.name)).toEqual(['b'])
+    expect(todo.pointsLeft).toBe(3000 - 1000 + 3000)
+    expect(todo.pointsDone).toBe(1000 + 6000)
+  })
+})
+
+describe('baro', () => {
+  const mi = (slug: string, en: string, ducats: number | null): MarketItem => ({ slug, gameRef: null, en, ru: null, ducats, tags: [] })
+  it('ranks prime parts by ducats per platinum, skipping illiquid ones', () => {
+    const items = [mi('a', 'A', 100), mi('b', 'B', 45), mi('c', 'C', 100), mi('d', 'D', null)]
+    const prices = { a: { median: 5, average: 5, volume: 50 }, b: { median: 3, average: 3, volume: 50 }, c: { median: 2, average: 2, volume: 1 }, d: { median: 1, average: 1, volume: 99 } }
+    expect(ducatDeals(prices, items, 5, 10).map((d) => [d.item.slug, d.perPlat])).toEqual([['a', 20], ['b', 15]])
+  })
+  it('matches baro inventory to market items by english name', () => {
+    const items = [mi('primed_fury', 'Primed Fury', null), mi('x', 'Other', null)]
+    const inv = [{ item: 'Primed Fury', ducats: 350, credits: 110000 }, { item: 'Prisma Grakata', ducats: 600, credits: 200000 }]
+    expect(matchBaroItems(inv, items).map((r) => [r.name, r.market?.slug ?? null])).toEqual([['Primed Fury', 'primed_fury'], ['Prisma Grakata', null]])
   })
 })

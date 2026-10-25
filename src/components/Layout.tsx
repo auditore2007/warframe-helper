@@ -1,9 +1,10 @@
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useRef } from 'react'
 import { Icon, type IconName } from './Icon'
 import { usePlayer, useProgress } from '../state/AppState'
 import { useWorld } from '../hooks/useCatalog'
 import { gameBuildDate } from '../lib/time'
+import { useWatchNotifier } from '../hooks/useWatchNotifier'
 
 interface NavItem {
   to: string
@@ -42,16 +43,20 @@ const NAV: { group: string | null; items: NavItem[] }[] = [
       { to: '/market', label: 'Рынок', icon: 'market' },
       { to: '/relic-value', label: 'Ценность реликвий', icon: 'coin' },
       { to: '/sell', label: 'Что продать', icon: 'coin' },
+      { to: '/baro', label: 'Баро', icon: 'gem' },
+      { to: '/rivens', label: 'Цены ривенов', icon: 'mod' },
     ],
   },
   {
     group: 'Ты',
     items: [
       { to: '/tracker', label: 'Трекер', icon: 'user' },
+      { to: '/mastery', label: 'Мастерство', icon: 'star' },
       { to: '/planner', label: 'Планировщик фарма', icon: 'target' },
       { to: '/foundry', label: 'Литейная', icon: 'clock' },
       { to: '/syndicates', label: 'Синдикаты', icon: 'banner' },
       { to: '/collections', label: 'Коллекции', icon: 'trophy' },
+      { to: '/settings', label: 'Настройки', icon: 'sigil' },
     ],
   },
 ]
@@ -92,6 +97,11 @@ function PlayerChip() {
 
 export function Layout() {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
+  useWatchNotifier()
+
+  // трей и уведомления просят открыть страницу
+  useEffect(() => window.wf?.onNavigate((hash) => navigate(hash)), [navigate])
   const mainRef = useRef<HTMLElement>(null)
 
   useEffect(() => {

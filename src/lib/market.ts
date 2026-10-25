@@ -8,7 +8,7 @@ export interface MarketIndex {
 export const EMPTY_INDEX: MarketIndex = { byRef: new Map(), bySlug: new Map() }
 
 // если дукатов в 10 раз больше чем платины - проще сдать Баро
-const DUCATS_PER_PLAT_THRESHOLD = 10
+export const DUCATS_PER_PLAT_THRESHOLD = 10
 
 export function buildMarketIndex(items: MarketItem[] | undefined): MarketIndex {
   if (!items?.length) return EMPTY_INDEX

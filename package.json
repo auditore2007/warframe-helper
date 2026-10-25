@@ -1,7 +1,7 @@
 {
   "name": "warframe-helper",
   "productName": "Warframe Helper",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Справочник и помощник по Warframe: гайды, фарм, звёздная карта, живой статус мира и трекер мастерства",
   "author": "lenoxolen",
   "private": true,
@@ -20,7 +20,8 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "package.json"
+      "package.json",
+      "build/icon.png"
     ],
     "directories": {
       "output": "release"
@@ -39,12 +40,15 @@
     },
     "asarUnpack": [
       "node_modules/tesseract.js/**",
-      "node_modules/tesseract.js-core/**"
+      "node_modules/tesseract.js-core/**",
+      "node_modules/koffi/**",
+      "node_modules/@koromix/**"
     ]
   },
   "dependencies": {
     "@fontsource-variable/manrope": "^5.3.0",
     "@fontsource/forum": "^5.3.0",
+    "koffi": "^3.3.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.30.6",

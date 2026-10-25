@@ -10,8 +10,8 @@ const DAILY_IDS = new Set(CHECKLIST.filter((t) => t.period === 'daily').map((t) 
 const TIMER_CHECK_MS = 10_000
 const PROFILE_REFRESH_MS = 30 * 60_000
 
-// оверлей - второе окно, уведомления шлёт только главное
-export const isOverlayWindow = (): boolean => window.location.hash.startsWith('#/overlay')
+// оверлей и подсказка - отдельные окна на том же хранилище. уведомления и автообновление только в главном
+export const isSecondaryWindow = (): boolean => /^#\/(overlay|lookup)/.test(window.location.hash)
 
 function loadProgress(): ProgressState {
   try {
@@ -97,11 +97,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   )
 }
 
-function notify(title: string, body: string) {
-  if (typeof Notification === 'undefined') return
-  const n = new Notification(title, { body })
-  n.onclick = () => void window.wf?.focusWindow()
-}
 
 // уведомление о готовом крафте
 function useFoundryNotifications(progress: ProgressState, update: (fn: Updater) => void) {
@@ -109,11 +104,11 @@ function useFoundryNotifications(progress: ProgressState, update: (fn: Updater) 
   progressRef.current = progress
 
   useEffect(() => {
-    if (isOverlayWindow()) return
+    if (isSecondaryWindow()) return
     const check = () => {
       const due = dueTimers(progressRef.current, Date.now())
       if (due.length === 0) return
-      for (const t of due) notify('Литейная: готово', `${t.name} можно забирать`)
+      for (const t of due) void window.wf?.notify({ title: 'Литейная: готово', body: `${t.name} можно забирать`, hash: '/foundry', kind: 'foundry' })
       update((s) => markNotified(s, due.map((t) => t.id)))
     }
     check()
@@ -160,7 +155,7 @@ function useProfile(account: AccountLink | null, update: (fn: Updater) => void):
 
   // профиль сам обновляется раз в полчаса
   useEffect(() => {
-    if (!account) return
+    if (!account || isSecondaryWindow()) return
     const id = window.setInterval(refresh, PROFILE_REFRESH_MS)
     return () => window.clearInterval(id)
   }, [account, refresh])

@@ -78,4 +78,63 @@ function summarizeHistory(json) {
   return { days: historyPoints(closed['90days']), hours: historyPoints(closed['48hours']) }
 }
 
-module.exports = { MARKET_API, MARKET_V1_API, isMarketSlug, slimMarketItems, summarizeOrders, mapDucatPrices, summarizeHistory }
+const nameOf = (x, lang) => (x && x.i18n && x.i18n[lang] ? x.i18n[lang].name : null)
+
+function slimRivenWeapons(json) {
+  const list = json && Array.isArray(json.data) ? json.data : []
+  return list
+    .filter((x) => x && isMarketSlug(x.slug))
+    .map((x) => ({ slug: x.slug, en: nameOf(x, 'en') || x.slug, ru: nameOf(x, 'ru'), type: x.rivenType || null, disposition: finite(x.disposition) }))
+}
+
+function slimRivenAttributes(json) {
+  const list = json && Array.isArray(json.data) ? json.data : []
+  return list
+    .filter((x) => x && isMarketSlug(x.slug))
+    .map((x) => ({
+      slug: x.slug,
+      en: nameOf(x, 'en') || x.slug,
+      ru: nameOf(x, 'ru'),
+      unit: x.unit || null,
+      positiveOnly: Boolean(x.positiveOnly),
+      negativeOnly: Boolean(x.negativeOnly),
+      exclusiveTo: Array.isArray(x.exclusiveTo) ? x.exclusiveTo : null,
+    }))
+}
+
+const MAX_POSITIVE = 3
+
+// поиск лотов ривенов: только прямая продажа, дешёвые сверху
+function rivenAuctionsUrl({ weapon, positive = [], negative = null } = {}) {
+  if (!isMarketSlug(weapon)) throw new Error('Неверное оружие')
+  if (!Array.isArray(positive) || positive.length > MAX_POSITIVE || !positive.every(isMarketSlug)) throw new Error('Неверные плюсы')
+  if (negative !== null && negative !== undefined && !isMarketSlug(negative)) throw new Error('Неверный минус')
+  const params = new URLSearchParams({ type: 'riven', weapon_url_name: weapon, sort_by: 'price_asc', buyout_policy: 'direct' })
+  if (positive.length) params.set('positive_stats', positive.join(','))
+  if (negative) params.set('negative_stats', negative)
+  return `${MARKET_V1_API}/auctions/search?${params.toString()}`
+}
+
+function slimAuctions(json) {
+  const list = json && json.payload && Array.isArray(json.payload.auctions) ? json.payload.auctions : []
+  return list
+    .filter((a) => a && !a.closed && a.item && a.owner && finite(a.buyout_price ?? a.starting_price) !== null)
+    .map((a) => ({
+      id: String(a.id),
+      price: finite(a.buyout_price ?? a.starting_price),
+      seller: String(a.owner.ingame_name || ''),
+      status: String(a.owner.status || 'offline'),
+      name: String(a.item.name || ''),
+      rerolls: finite(a.item.re_rolls) ?? 0,
+      mastery: finite(a.item.mastery_level) ?? 0,
+      attributes: (Array.isArray(a.item.attributes) ? a.item.attributes : [])
+        .filter((x) => x && isMarketSlug(x.url_name))
+        .map((x) => ({ slug: x.url_name, value: finite(x.value) ?? 0, positive: Boolean(x.positive) })),
+    }))
+    .sort((a, b) => a.price - b.price)
+}
+
+module.exports = {
+  MARKET_API, MARKET_V1_API, isMarketSlug, slimMarketItems, summarizeOrders, mapDucatPrices, summarizeHistory,
+  slimRivenWeapons, slimRivenAttributes, rivenAuctionsUrl, slimAuctions,
+}

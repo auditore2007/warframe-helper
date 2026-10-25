@@ -8,6 +8,7 @@ import { EmptyState, ErrorState, Loading, Orokin, SearchBox } from '../component
 import { Icon } from '../components/Icon'
 import { useQueryParam } from '../components/CatalogBits'
 import { PriceChart } from '../components/PriceChart'
+import { WatchButton, WatchList } from '../components/Watch'
 
 const MAX_RESULTS = 40
 const STATUS_LABEL: Record<string, string> = { ingame: 'в игре', online: 'онлайн' }
@@ -75,6 +76,7 @@ function PricePanel({ item }: { item: MarketItem }) {
           {betterForDucats(data.sell, item.ducats) && (
             <div className="callout">Платины за этот предмет дают мало - выгоднее сдать его Баро за {item.ducats} дукатов.</div>
           )}
+          <WatchButton key={item.slug} item={item} sell={data.sell} />
           <History slug={item.slug} />
           <h3 style={{ margin: '22px 0 8px' }}>Продавцы онлайн</h3>
           {data.sellers.length === 0 ? (
@@ -133,6 +135,7 @@ export function Market() {
           <div className="row" style={{ marginBottom: 14 }}>
             <SearchBox value={query} onChange={setQuery} placeholder="Например: Сарина Прайм или Primed Flow" />
           </div>
+          <WatchList onPick={setSelected} />
           {loading && !data && <Loading rows={4} height={44} />}
           {error && !data && <ErrorState message={error} onRetry={refresh} />}
           {data && query.trim().length < 2 && <p className="small muted">Введи хотя бы 2 буквы названия.</p>}

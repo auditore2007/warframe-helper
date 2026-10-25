@@ -4,7 +4,7 @@ import catalog from './catalog.cjs'
 import market from './market.cjs'
 
 const { splitCatalog, buildRelics, refinementOf, parseRelicName } = catalog
-const { isMarketSlug, slimMarketItems, summarizeOrders, mapDucatPrices, summarizeHistory } = market
+const { isMarketSlug, slimMarketItems, summarizeOrders, mapDucatPrices, summarizeHistory, slimRivenWeapons, slimRivenAttributes, rivenAuctionsUrl, slimAuctions } = market
 
 const relic = (suffix, chance, vaulted = true) => ({
   uniqueName: `/Lotus/Types/Game/Projections/T4VoidProjectionE${suffix}`,
@@ -126,5 +126,26 @@ describe('market', () => {
     ])
     expect(h.hours).toHaveLength(1)
     expect(summarizeHistory(null)).toEqual({ days: [], hours: [] })
+  })
+  it('slims riven weapon and attribute lists', () => {
+    const w = { data: [{ slug: 'soma', rivenType: 'rifle', disposition: 1.15, i18n: { en: { name: 'Soma' }, ru: { name: 'Сома' } } }, { slug: 'BAD' }] }
+    expect(slimRivenWeapons(w)).toEqual([{ slug: 'soma', en: 'Soma', ru: 'Сома', type: 'rifle', disposition: 1.15 }])
+    const a = { data: [{ slug: 'critical_chance', unit: 'percent', exclusiveTo: null, positiveOnly: false, i18n: { en: { name: 'Critical Chance' }, ru: { name: 'Шанс крит.' } } }] }
+    expect(slimRivenAttributes(a)).toEqual([{ slug: 'critical_chance', en: 'Critical Chance', ru: 'Шанс крит.', unit: 'percent', positiveOnly: false, negativeOnly: false, exclusiveTo: null }])
+  })
+  it('builds a safe auction search url', () => {
+    expect(rivenAuctionsUrl({ weapon: 'soma', positive: ['critical_chance', 'multishot'], negative: 'zoom' })).toBe(
+      'https://api.warframe.market/v1/auctions/search?type=riven&weapon_url_name=soma&sort_by=price_asc&buyout_policy=direct&positive_stats=critical_chance%2Cmultishot&negative_stats=zoom')
+    expect(rivenAuctionsUrl({ weapon: 'soma' })).toBe('https://api.warframe.market/v1/auctions/search?type=riven&weapon_url_name=soma&sort_by=price_asc&buyout_policy=direct')
+    expect(() => rivenAuctionsUrl({ weapon: '../x' })).toThrow()
+    expect(() => rivenAuctionsUrl({ weapon: 'soma', positive: ['a', 'b', 'c', 'd'] })).toThrow()
+  })
+  it('slims auctions and sorts by price', () => {
+    const lot = (id, buyout, status) => ({ id, buyout_price: buyout, starting_price: buyout, closed: false, visible: true,
+      owner: { ingame_name: 'p' + id, status }, item: { name: 'crita', re_rolls: 2, mastery_level: 12, attributes: [{ url_name: 'critical_chance', value: 24, positive: true }] } })
+    const json = { payload: { auctions: [lot('b', 50, 'ingame'), lot('a', 30, 'offline'), { id: 'x', closed: true }] } }
+    expect(slimAuctions(json).map((x) => [x.id, x.price, x.status])).toEqual([['a', 30, 'offline'], ['b', 50, 'ingame']])
+    expect(slimAuctions(json)[0].attributes).toEqual([{ slug: 'critical_chance', value: 24, positive: true }])
+    expect(slimAuctions(null)).toEqual([])
   })
 })

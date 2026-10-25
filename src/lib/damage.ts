@@ -120,4 +120,22 @@ export function calcDamage(weapon: WeaponStats, mods: ModEffect[]): DamageResult
   }
 }
 
+export interface FactionMods {
+  weak: DamageType[]
+  resist: DamageType[]
+}
+
+// во сколько раз урон по фракции отличается от урона "в вакууме"
+export function factionMultiplier(damage: Partial<Record<DamageType, number>>, faction: FactionMods): number {
+  let total = 0
+  let scaled = 0
+  for (const [type, value] of Object.entries(damage) as [DamageType, number][]) {
+    if (!value) continue
+    const mult = faction.weak.includes(type) ? 1.5 : faction.resist.includes(type) ? 0.5 : 1
+    total += value
+    scaled += value * mult
+  }
+  return total ? scaled / total : 1
+}
+
 export const isPhysical = (t: DamageType): boolean => PHYSICAL.includes(t)

@@ -26,6 +26,11 @@ import { Syndicates } from './pages/Syndicates'
 import { Collections } from './pages/Collections'
 import { Overlay } from './pages/Overlay'
 import { Calculator } from './pages/Calculator'
+import { Settings } from './pages/Settings'
+import { Lookup } from './pages/Lookup'
+import { Mastery } from './pages/Mastery'
+import { Baro } from './pages/Baro'
+import { Rivens } from './pages/Rivens'
 import { EmptyState } from './components/ui'
 
 export function App() {
@@ -34,6 +39,7 @@ export function App() {
       <HashRouter>
         <Routes>
           <Route path="overlay" element={<Overlay />} />
+          <Route path="lookup" element={<Lookup />} />
           <Route element={<Layout />}>
             <Route index element={<Home />} />
             <Route path="world" element={<World />} />
@@ -56,6 +62,10 @@ export function App() {
             <Route path="market" element={<Market />} />
             <Route path="relic-value" element={<RelicValue />} />
             <Route path="sell" element={<Sell />} />
+            <Route path="baro" element={<Baro />} />
+            <Route path="rivens" element={<Rivens />} />
+            <Route path="mastery" element={<Mastery />} />
+            <Route path="settings" element={<Settings />} />
             <Route path="tracker" element={<Tracker />} />
             <Route path="planner" element={<Planner />} />
             <Route path="foundry" element={<Foundry />} />

@@ -1,412 +1,139 @@
 'use strict'
 
-const { app, BrowserWindow, ipcMain, shell, protocol, globalShortcut, screen } = require('electron')
+const { app, ipcMain, shell, protocol, Notification, globalShortcut } = require('electron')
 const path = require('node:path')
-const fs = require('node:fs/promises')
-const { API_BASE, isAllowedApiPath, cacheFileName, isSafeImageName } = require('./lib/apiPath.cjs')
-const { extractAccountFromLog, profileUrls, parseProfile, isAccountId, accountIdFromUserData } = require('./lib/profile.cjs')
+const data = require('./data.cjs')
+const windows = require('./windows.cjs')
 const { loginViaWarframe, USER_DATA_URL } = require('./login.cjs')
-const overframe = require('./lib/overframe.cjs')
+const { accountIdFromUserData } = require('./lib/profile.cjs')
 const { stopOcr, OCR_DIR } = require('./ocr.cjs')
 const { createRewardScanner } = require('./rewardScan.cjs')
-const { CATALOG_FIELDS, CATALOG_NAMES, splitCatalog } = require('./lib/catalog.cjs')
-const { MARKET_API, MARKET_V1_API, isMarketSlug, slimMarketItems, summarizeOrders, mapDucatPrices, summarizeHistory } = require('./lib/market.cjs')
-
-const REQUEST_TIMEOUT_MS = 20000
-const MAX_LOG_BYTES = 12 * 1024 * 1024
-const DEV_URL = process.env.VITE_DEV_SERVER_URL
-const cacheDir = () => path.join(app.getPath('userData'), 'cache')
-const IMAGE_SOURCE = 'https://raw.githubusercontent.com/wfcd/warframe-items/master/data/img/'
-const DAY_MS = 24 * 60 * 60 * 1000
-const CATALOG_TIMEOUT_MS = 120000
-const MARKET_PRICE_TTL_MS = 15 * 60 * 1000
-const MARKET_SPACING_MS = 400
-const MARKET_HEADERS = { Language: 'ru', Platform: 'pc', Crossplay: 'true' }
-const HOUR_MS = 60 * 60 * 1000
-const OVERLAY_SHORTCUT = 'CommandOrControl+Shift+O'
-const REWARDS_SHORTCUT = 'CommandOrControl+Alt+R'
-const OVERLAY_SIZE = { width: 380, height: 560 }
-const OVERLAY_MARGIN = 24
+const { createLookup } = require('./lookup.cjs')
+const { initSettings, getSettings, updateSettings } = require('./settingsStore.cjs')
+const { createTray, trayNotice } = require('./tray.cjs')
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'wfimg', privileges: { standard: true, secure: true, supportFetchAPI: true } }])
 
-async function readCache(file) {
-  try {
-    const raw = await fs.readFile(path.join(cacheDir(), file), 'utf8')
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
+// второй запуск просто показывает уже открытое окно
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => windows.focusWindow())
 }
 
-async function writeCache(file, entry) {
-  try {
-    await fs.mkdir(cacheDir(), { recursive: true })
-    await fs.writeFile(path.join(cacheDir(), file), JSON.stringify(entry))
-  } catch (err) {
-    console.error('[cache] write failed', file, err)
-  }
-}
-
-async function fetchJson(url, { headers = {}, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(timeoutMs),
-    headers: { 'User-Agent': `WarframeHelper/${app.getVersion()} (desktop)`, ...headers },
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json()
-}
-
-// сначала кэш, потом сеть, если сети нет - старый кэш
-async function apiGet(_event, apiPath, ttlSeconds = 3600, force = false) {
-  if (!isAllowedApiPath(apiPath)) return { ok: false, error: 'Запрос к API отклонён' }
-  const file = cacheFileName(apiPath)
-  const cached = await readCache(file)
-  const ttlMs = Math.max(0, Number(ttlSeconds) || 0) * 1000
-  if (!force && cached && Date.now() - cached.fetchedAt < ttlMs) {
-    return { ok: true, data: cached.data, fetchedAt: cached.fetchedAt, stale: false }
-  }
-  try {
-    const data = await fetchJson(API_BASE + apiPath)
-    const entry = { fetchedAt: Date.now(), data }
-    await writeCache(file, entry)
-    return { ok: true, data, fetchedAt: entry.fetchedAt, stale: false }
-  } catch (err) {
-    console.error('[api] fetch failed', apiPath, err.message)
-    if (cached) return { ok: true, data: cached.data, fetchedAt: cached.fetchedAt, stale: true }
-    return { ok: false, error: 'Нет связи с сервером данных и нет сохранённой копии' }
-  }
-}
-
-// хвост EE.log, null если игры нет
-async function readLogTail() {
-  const logPath = path.join(process.env.LOCALAPPDATA || '', 'Warframe', 'EE.log')
-  try {
-    const handle = await fs.open(logPath, 'r')
-    try {
-      const { size } = await handle.stat()
-      const length = Math.min(size, MAX_LOG_BYTES)
-      const buffer = Buffer.alloc(length)
-      await handle.read(buffer, 0, length, size - length)
-      return buffer.toString('latin1')
-    } finally {
-      await handle.close()
-    }
-  } catch {
-    return null
-  }
-}
-
-async function detectAccount() {
-  const log = await readLogTail()
-  if (log === null) return { ok: false, error: 'Лог игры не найден. Warframe установлен на этом компьютере?' }
-  const account = extractAccountFromLog(log)
-  if (!account) return { ok: false, error: 'В логе игры нет входа в аккаунт. Запусти Warframe и войди.' }
-  if (!account.accountId) {
-    return { ok: false, displayName: account.displayName, error: `В логе игры есть только ник «${account.displayName}», ID там больше не пишут. Войди через warframe.com, так быстрее.` }
-  }
-  return { ok: true, ...account }
-}
-
-async function fetchProfile(_event, accountId, platform) {
-  if (!isAccountId(accountId)) return { ok: false, error: 'ID аккаунта должен состоять из 24 символов 0-9 и a-f' }
-  const file = `profile_${accountId}.json`
-  let lastError = null
-  for (const url of profileUrls(accountId, platform)) {
-    try {
-      const profile = parseProfile(await fetchJson(url))
-      const entry = { fetchedAt: Date.now(), data: profile }
-      await writeCache(file, entry)
-      return { ok: true, data: profile, fetchedAt: entry.fetchedAt, stale: false }
-    } catch (err) {
-      lastError = err
-    }
-  }
-  console.error('[profile] fetch failed', lastError && lastError.message)
-  const cached = await readCache(file)
-  if (cached) return { ok: true, data: cached.data, fetchedAt: cached.fetchedAt, stale: true }
-  return { ok: false, error: 'Сервер профилей Warframe не ответил. Попробуй позже.' }
-}
-
-// картинки кэшируем на диск, чтоб работало офлайн
-async function serveImage(request) {
-  const name = decodeURIComponent(new URL(request.url).pathname.slice(1))
-  if (!isSafeImageName(name)) return new Response(null, { status: 400 })
-  const file = path.join(cacheDir(), 'img', name)
-  const type = name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg'
-  try {
-    return new Response(await fs.readFile(file), { headers: { 'Content-Type': type } })
-  } catch {
-    /* ещё нет в кэше */
-  }
-  try {
-    const res = await fetch(IMAGE_SOURCE + encodeURIComponent(name), { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
-    if (!res.ok) return new Response(null, { status: res.status })
-    const bytes = Buffer.from(await res.arrayBuffer())
-    await fs.mkdir(path.dirname(file), { recursive: true })
-    await fs.writeFile(file, bytes)
-    return new Response(bytes, { headers: { 'Content-Type': type } })
-  } catch {
-    return new Response(null, { status: 504 })
-  }
-}
-
-// то же самое для каталога и маркета
-async function cached(file, ttlMs, produce, force = false) {
-  const entry = await readCache(file)
-  if (!force && entry && Date.now() - entry.fetchedAt < ttlMs) {
-    return { ok: true, data: entry.data, fetchedAt: entry.fetchedAt, stale: false }
-  }
-  try {
-    const data = await produce()
-    const fresh = { fetchedAt: Date.now(), data }
-    await writeCache(file, fresh)
-    return { ok: true, data, fetchedAt: fresh.fetchedAt, stale: false }
-  } catch (err) {
-    console.error('[cache] refresh failed', file, err.message)
-    if (entry) return { ok: true, data: entry.data, fetchedAt: entry.fetchedAt, stale: true }
-    return { ok: false, error: 'Нет связи с сервером данных и нет сохранённой копии' }
-  }
-}
-
-let catalogDownload = null
-
-// /items качаем раз в день и режем на моды, арканы, реликвии, компаньонов
-function downloadCatalog() {
-  if (!catalogDownload) {
-    const url = `${API_BASE}/items/?language=ru&only=${CATALOG_FIELDS.join(',')}`
-    catalogDownload = fetchJson(url, { timeoutMs: CATALOG_TIMEOUT_MS })
-      .then(async (items) => {
-        const parts = splitCatalog(items)
-        const fetchedAt = Date.now()
-        await Promise.all(CATALOG_NAMES.map((n) => writeCache(`catalog2_${n}.json`, { fetchedAt, data: parts[n] })))
-        return parts
-      })
-      .finally(() => {
-        catalogDownload = null
-      })
-  }
-  return catalogDownload
-}
-
-async function catalogGet(_event, name, force = false) {
-  if (!CATALOG_NAMES.includes(name)) return { ok: false, error: 'Неизвестный раздел каталога' }
-  return cached(`catalog2_${name}.json`, DAY_MS, async () => (await downloadCatalog())[name], force)
-}
-
-let marketQueue = Promise.resolve()
-
-// запросы к маркету по одному с паузой, у них лимит
-function marketFetch(url) {
-  const run = marketQueue.then(() => fetchJson(url, { headers: MARKET_HEADERS }))
-  marketQueue = run.catch(() => undefined).then(() => new Promise((r) => setTimeout(r, MARKET_SPACING_MS)))
-  return run
-}
-
-async function marketItems(_event, force = false) {
-  return cached('market_items_v2.json', DAY_MS, async () => slimMarketItems(await marketFetch(`${MARKET_API}/items`)), force)
-}
-
-async function marketHistory(_event, slug) {
-  if (!isMarketSlug(slug)) return { ok: false, error: 'Неверный идентификатор предмета' }
-  return cached(`market_history_${slug}.json`, HOUR_MS, async () => summarizeHistory(await marketFetch(`${MARKET_V1_API}/items/${slug}/statistics`)))
-}
-
-// сборки с overframe, кэш на сутки
-async function buildsList(_event, itemName) {
-  let url
-  try {
-    url = overframe.listUrl(itemName)
-  } catch (err) {
-    return { ok: false, error: err.message }
-  }
-  const file = `builds_${String(itemName).toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 60)}.json`
-  return cached(file, DAY_MS, async () => overframe.slimBuildList(await fetchJson(url)))
-}
-
-async function buildDetail(_event, id) {
-  let url
-  try {
-    url = overframe.detailUrl(id)
-  } catch (err) {
-    return { ok: false, error: err.message }
-  }
-  return cached(`build_${id}.json`, DAY_MS, async () => overframe.slimBuild(await fetchJson(url)))
-}
-
-// цены всех прайм-частей одним запросом
-async function marketPrices(_event, force = false) {
-  return cached('market_prices.json', HOUR_MS, async () => {
-    const items = await marketItems(null)
-    if (!items.ok) throw new Error(items.error)
-    return mapDucatPrices(await marketFetch(`${MARKET_V1_API}/tools/ducats`), items.data)
-  }, force)
-}
-
-async function marketPrice(_event, slug) {
-  if (!isMarketSlug(slug)) return { ok: false, error: 'Неверный идентификатор предмета' }
-  return cached(`market_price_${slug}.json`, MARKET_PRICE_TTL_MS, async () => summarizeOrders(await marketFetch(`${MARKET_API}/orders/item/${slug}/top`)))
-}
-
-let mainWindow = null
-let overlayWindow = null
-
-function appUrl(win, hash = '') {
-  if (DEV_URL) win.loadURL(DEV_URL + (hash ? `#${hash}` : ''))
-  else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), hash ? { hash } : undefined)
-}
-
-// окно поверх игры (работает если игра в оконном без рамки)
-function createOverlay() {
-  const { workArea } = screen.getPrimaryDisplay()
-  overlayWindow = new BrowserWindow({
-    ...OVERLAY_SIZE,
-    x: workArea.x + workArea.width - OVERLAY_SIZE.width - OVERLAY_MARGIN,
-    y: workArea.y + OVERLAY_MARGIN,
-    minWidth: 300,
-    minHeight: 240,
-    frame: false,
-    transparent: true,
-    resizable: true,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    show: false,
-    title: 'Warframe Helper - оверлей',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  })
-  overlayWindow.setAlwaysOnTop(true, 'screen-saver')
-  overlayWindow.setVisibleOnAllWorkspaces(true)
-  overlayWindow.once('ready-to-show', () => overlayWindow && overlayWindow.showInactive())
-  overlayWindow.on('closed', () => {
-    overlayWindow = null
-  })
-  appUrl(overlayWindow, '/overlay')
-}
-
-function toggleOverlay() {
-  if (!overlayWindow) return createOverlay()
-  if (overlayWindow.isVisible()) overlayWindow.hide()
-  else overlayWindow.showInactive()
-}
-
-// оверлей мог ещё не загрузиться, тогда шлём после загрузки
-function sendToOverlay(channel, payload) {
-  if (!overlayWindow) createOverlay()
-  else if (!overlayWindow.isVisible()) overlayWindow.showInactive()
-  const wc = overlayWindow.webContents
-  if (wc.isLoading()) wc.once('did-finish-load', () => wc.send(channel, payload))
-  else wc.send(channel, payload)
-}
-
+const startHidden = process.argv.includes('--hidden')
 let rewardScanner = null
+let lookup = null
+let trayHintShown = false
+let failedHotkeys = []
 
 async function scanRewards() {
   if (!rewardScanner) {
-    rewardScanner = createRewardScanner({ catalogGet, marketItems, marketPrices, readLogTail, userData: app.getPath('userData') })
+    rewardScanner = createRewardScanner({
+      catalogGet: data.catalogGet,
+      marketItems: data.marketItems,
+      marketPrices: data.marketPrices,
+      readLogTail: data.readLogTail,
+      userData: app.getPath('userData'),
+      getArea: () => getSettings().rewardArea,
+    })
   }
-  sendToOverlay('rewards:status', { busy: true })
+  windows.sendToOverlay('rewards:status', { busy: true })
   const result = await rewardScanner.run()
-  sendToOverlay('rewards:result', result)
+  windows.sendToOverlay('rewards:result', result)
   return result
 }
 
-function openLastScan() {
-  return shell.openPath(path.join(OCR_DIR(app.getPath('userData')), 'last-rewards.png'))
+const openOcrShot = (name) => shell.openPath(path.join(OCR_DIR(app.getPath('userData')), name))
+
+function quitApp() {
+  const win = windows.getMainWindow()
+  if (win) win.isQuitting = true
+  app.quit()
 }
 
-function hideOverlay() {
-  if (overlayWindow) overlayWindow.hide()
+function openPage(hash) {
+  windows.focusWindow()
+  const win = windows.getMainWindow()
+  if (win) win.webContents.send('navigate', hash)
 }
 
-function setOverlayOpacity(_event, value) {
-  const opacity = Number(value)
-  if (overlayWindow && Number.isFinite(opacity)) overlayWindow.setOpacity(Math.min(1, Math.max(0.3, opacity)))
+function onMainHidden() {
+  if (trayHintShown) return
+  trayHintShown = true
+  trayNotice('Warframe Helper работает в трее', 'Таймеры и горячие клавиши продолжают работать. Выйти можно через значок у часов.')
 }
 
-function focusWindow() {
-  const win = mainWindow
-  if (!win) return
-  if (win.isMinimized()) win.restore()
-  win.show()
-  win.focus()
+function saveSettings(_e, patch) {
+  const res = updateSettings(patch)
+  failedHotkeys = res.failedHotkeys
+  if (res.settings.lookup.enabled) lookup.start()
+  else lookup.stop()
+  return res
 }
 
-function openExternal(_event, url) {
-  try {
-    const parsed = new URL(url)
-    if (parsed.protocol === 'https:') shell.openExternal(parsed.toString())
-  } catch {
-    /* кривой url - игнор */
-  }
+// уведомление из окна (литейная, цены). клик открывает нужную страницу
+function notify(_e, { title, body, hash, kind }) {
+  if (!Notification.isSupported()) return
+  if (kind && getSettings().notify[kind] === false) return
+  const n = new Notification({ title: String(title).slice(0, 100), body: String(body).slice(0, 300), icon: windows.ICON })
+  n.on('click', () => (hash ? openPage(hash) : windows.focusWindow()))
+  n.show()
 }
 
-function createWindow() {
-  const win = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1024,
-    minHeight: 680,
-    backgroundColor: '#0D1117',
-    title: 'Warframe Helper',
-    icon: path.join(__dirname, '..', 'build', 'icon.png'),
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#0D1117', symbolColor: '#C8A44D', height: 36 },
-    show: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  })
-  mainWindow = win
-  win.on('closed', () => {
-    mainWindow = null
-    if (overlayWindow) overlayWindow.close()
-  })
-  win.once('ready-to-show', () => win.show())
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    openExternal(null, url)
-    return { action: 'deny' }
-  })
-  appUrl(win)
+function registerIpc() {
+  ipcMain.handle('api:get', data.apiGet)
+  ipcMain.handle('profile:detect', data.detectAccount)
+  ipcMain.handle('profile:fetch', data.fetchProfile)
+  ipcMain.handle('open:external', windows.openExternal)
+  ipcMain.handle('catalog:get', data.catalogGet)
+  ipcMain.handle('market:items', data.marketItems)
+  ipcMain.handle('market:price', data.marketPrice)
+  ipcMain.handle('market:prices', data.marketPrices)
+  ipcMain.handle('market:history', data.marketHistory)
+  ipcMain.handle('market:rivenWeapons', data.rivenWeapons)
+  ipcMain.handle('market:rivenAttributes', data.rivenAttributes)
+  ipcMain.handle('market:rivenAuctions', data.rivenAuctions)
+  ipcMain.handle('builds:list', data.buildsList)
+  ipcMain.handle('builds:detail', data.buildDetail)
+  ipcMain.handle('rewards:scan', scanRewards)
+  ipcMain.handle('rewards:lastShot', () => openOcrShot('last-rewards.png'))
+  ipcMain.handle('lookup:lastShot', () => openOcrShot('last-lookup.png'))
+  ipcMain.handle('lookup:show', (_e, size) => lookup.show(size))
+  ipcMain.handle('lookup:hide', () => lookup.hide())
+  ipcMain.handle('account:login', () => loginViaWarframe(windows.getMainWindow()))
+  ipcMain.handle('account:parse', (_e, text) => accountIdFromUserData(text))
+  ipcMain.handle('account:userDataPage', () => shell.openExternal(USER_DATA_URL))
+  ipcMain.handle('settings:get', () => ({ settings: getSettings(), failedHotkeys }))
+  ipcMain.handle('settings:set', saveSettings)
+  ipcMain.handle('notify', notify)
+  ipcMain.handle('window:focus', windows.focusWindow)
+  ipcMain.handle('overlay:toggle', windows.toggleOverlay)
+  ipcMain.handle('overlay:hide', windows.hideOverlay)
+  ipcMain.handle('overlay:opacity', windows.setOverlayOpacity)
 }
 
 app.setAppUserModelId('com.lenoxolen.warframehelper')
 
 app.whenReady().then(() => {
-  protocol.handle('wfimg', serveImage)
-  ipcMain.handle('api:get', apiGet)
-  ipcMain.handle('profile:detect', detectAccount)
-  ipcMain.handle('profile:fetch', fetchProfile)
-  ipcMain.handle('open:external', openExternal)
-  ipcMain.handle('catalog:get', catalogGet)
-  ipcMain.handle('market:items', marketItems)
-  ipcMain.handle('market:price', marketPrice)
-  ipcMain.handle('market:prices', marketPrices)
-  ipcMain.handle('market:history', marketHistory)
-  ipcMain.handle('builds:list', buildsList)
-  ipcMain.handle('builds:detail', buildDetail)
-  ipcMain.handle('rewards:scan', scanRewards)
-  ipcMain.handle('rewards:lastShot', openLastScan)
-  ipcMain.handle('account:login', () => loginViaWarframe(mainWindow))
-  ipcMain.handle('account:parse', (_e, text) => accountIdFromUserData(text))
-  ipcMain.handle('account:userDataPage', () => shell.openExternal(USER_DATA_URL))
-  ipcMain.handle('window:focus', focusWindow)
-  ipcMain.handle('overlay:toggle', toggleOverlay)
-  ipcMain.handle('overlay:hide', hideOverlay)
-  ipcMain.handle('overlay:opacity', setOverlayOpacity)
-  if (!globalShortcut.register(OVERLAY_SHORTCUT, toggleOverlay)) console.error('[overlay] shortcut is taken', OVERLAY_SHORTCUT)
-  if (!globalShortcut.register(REWARDS_SHORTCUT, () => void scanRewards())) console.error('[rewards] shortcut is taken', REWARDS_SHORTCUT)
-  createWindow()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  protocol.handle('wfimg', data.serveImage)
+  registerIpc()
+  failedHotkeys = initSettings({ overlay: windows.toggleOverlay, rewards: () => void scanRewards() })
+  windows.createWindow({ hideOnClose: () => getSettings().closeToTray, onHidden: onMainHidden, startHidden })
+  createTray(windows.ICON, {
+    open: windows.focusWindow,
+    overlay: windows.toggleOverlay,
+    scan: () => void scanRewards(),
+    settings: () => openPage('/settings'),
+    quit: quitApp,
   })
+  lookup = createLookup({ getSettings, readLogTail: data.readLogTail, userData: app.getPath('userData'), webPreferences: windows.webPreferences, appUrl: windows.appUrl })
+  if (getSettings().lookup.enabled) lookup.start()
+})
+
+app.on('before-quit', () => {
+  const win = windows.getMainWindow()
+  if (win) win.isQuitting = true
 })
 
 app.on('will-quit', () => {

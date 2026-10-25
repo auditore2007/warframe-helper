@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiGet } from '../lib/api'
-import type { ApiResult, BuildDetail, BuildSummary, CatalogMap, CatalogName, MarketItem, MarketPrice, PriceHistory, PriceMap } from '../lib/types'
+import type { ApiResult, BuildDetail, BuildSummary, RivenAttribute, RivenAuction, RivenQuery, RivenWeapon, CatalogMap, CatalogName, MarketItem, MarketPrice, PriceHistory, PriceMap } from '../lib/types'
 
 type Loader<T> = (force: boolean) => Promise<ApiResult<T>>
 
@@ -104,4 +104,17 @@ export function useBuilds(itemName: string | null): ApiState<BuildSummary[]> {
 
 export function useBuildDetail(id: number | null): ApiState<BuildDetail> {
   return useResource<BuildDetail>(id ? `build:${id}` : null, async () => (window.wf && id ? window.wf.buildDetail(id) : DESKTOP_ONLY))
+}
+
+export function useRivenWeapons(): ApiState<RivenWeapon[]> {
+  return useResource<RivenWeapon[]>('riven:weapons', async () => (window.wf ? window.wf.rivenWeapons() : DESKTOP_ONLY))
+}
+
+export function useRivenAttributes(): ApiState<RivenAttribute[]> {
+  return useResource<RivenAttribute[]>('riven:attributes', async () => (window.wf ? window.wf.rivenAttributes() : DESKTOP_ONLY))
+}
+
+export function useRivenAuctions(query: RivenQuery | null): ApiState<RivenAuction[]> {
+  const key = query ? `riven:auctions:${query.weapon}:${query.positive.join(',')}:${query.negative ?? ''}` : null
+  return useResource<RivenAuction[]>(key, async () => (window.wf && query ? window.wf.rivenAuctions(query) : DESKTOP_ONLY))
 }
