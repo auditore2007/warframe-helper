@@ -8,7 +8,7 @@ import { expectedValue } from './relicValue'
 import { dailyCap, rankProgress, daysToRank } from './syndicates'
 import { nextArchons, teshinSchedule } from './rotations'
 import type { RelicReward } from './types'
-import { wtsMessages } from './market'
+import { wtsMessages, priceTrend } from './market'
 import { buildPlan } from './planner'
 import { rollCycle } from './cycles'
 import { gameBuildDate } from './time'
@@ -224,5 +224,16 @@ describe('game build label', () => {
     expect(gameBuildDate('2026.10.22.13.12/4352xsmAuTuk8KzkemTuFw')).toBe('22.10.2026')
     expect(gameBuildDate(undefined)).toBeNull()
     expect(gameBuildDate('garbage')).toBeNull()
+  })
+})
+
+describe('price trend', () => {
+  const pt = (t: number, median: number, volume = 1) => ({ t, median, min: null, max: null, volume })
+  it('compares the last median with the first and finds the range', () => {
+    expect(priceTrend([pt(1, 80), pt(2, 60), pt(3, 100)])).toEqual({ last: 100, changePct: 25, low: 60, high: 100, volume: 3 })
+  })
+  it('handles empty and single-point series', () => {
+    expect(priceTrend([])).toBeNull()
+    expect(priceTrend([pt(1, 10)])).toEqual({ last: 10, changePct: 0, low: 10, high: 10, volume: 1 })
   })
 })

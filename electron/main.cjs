@@ -4,9 +4,13 @@ const { app, BrowserWindow, ipcMain, shell, protocol, globalShortcut, screen } =
 const path = require('node:path')
 const fs = require('node:fs/promises')
 const { API_BASE, isAllowedApiPath, cacheFileName, isSafeImageName } = require('./lib/apiPath.cjs')
-const { extractAccountFromLog, profileUrls, parseProfile, isAccountId } = require('./lib/profile.cjs')
+const { extractAccountFromLog, profileUrls, parseProfile, isAccountId, accountIdFromUserData } = require('./lib/profile.cjs')
+const { loginViaWarframe, USER_DATA_URL } = require('./login.cjs')
+const overframe = require('./lib/overframe.cjs')
+const { stopOcr, OCR_DIR } = require('./ocr.cjs')
+const { createRewardScanner } = require('./rewardScan.cjs')
 const { CATALOG_FIELDS, CATALOG_NAMES, splitCatalog } = require('./lib/catalog.cjs')
-const { MARKET_API, MARKET_V1_API, isMarketSlug, slimMarketItems, summarizeOrders, mapDucatPrices } = require('./lib/market.cjs')
+const { MARKET_API, MARKET_V1_API, isMarketSlug, slimMarketItems, summarizeOrders, mapDucatPrices, summarizeHistory } = require('./lib/market.cjs')
 
 const REQUEST_TIMEOUT_MS = 20000
 const MAX_LOG_BYTES = 12 * 1024 * 1024
@@ -20,6 +24,7 @@ const MARKET_SPACING_MS = 400
 const MARKET_HEADERS = { Language: 'ru', Platform: 'pc', Crossplay: 'true' }
 const HOUR_MS = 60 * 60 * 1000
 const OVERLAY_SHORTCUT = 'CommandOrControl+Shift+O'
+const REWARDS_SHORTCUT = 'CommandOrControl+Alt+R'
 const OVERLAY_SIZE = { width: 380, height: 560 }
 const OVERLAY_MARGIN = 24
 
@@ -46,7 +51,7 @@ async function writeCache(file, entry) {
 async function fetchJson(url, { headers = {}, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   const res = await fetch(url, {
     signal: AbortSignal.timeout(timeoutMs),
-    headers: { 'User-Agent': 'WarframeHelper/1.0 (desktop)', ...headers },
+    headers: { 'User-Agent': `WarframeHelper/${app.getVersion()} (desktop)`, ...headers },
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.json()
@@ -73,7 +78,8 @@ async function apiGet(_event, apiPath, ttlSeconds = 3600, force = false) {
   }
 }
 
-async function detectAccount() {
+// хвост EE.log, null если игры нет
+async function readLogTail() {
   const logPath = path.join(process.env.LOCALAPPDATA || '', 'Warframe', 'EE.log')
   try {
     const handle = await fs.open(logPath, 'r')
@@ -82,18 +88,24 @@ async function detectAccount() {
       const length = Math.min(size, MAX_LOG_BYTES)
       const buffer = Buffer.alloc(length)
       await handle.read(buffer, 0, length, size - length)
-      const account = extractAccountFromLog(buffer.toString('latin1'))
-      if (!account) return { ok: false, error: 'В логе игры нет входа в аккаунт. Запусти Warframe и войди.' }
-      if (!account.accountId) {
-        return { ok: false, error: `Игра записала в лог только ник «${account.displayName}», без ID аккаунта. Введи ID вручную ниже.` }
-      }
-      return { ok: true, ...account }
+      return buffer.toString('latin1')
     } finally {
       await handle.close()
     }
   } catch {
-    return { ok: false, error: 'Лог игры не найден. Warframe установлен на этом компьютере?' }
+    return null
   }
+}
+
+async function detectAccount() {
+  const log = await readLogTail()
+  if (log === null) return { ok: false, error: 'Лог игры не найден. Warframe установлен на этом компьютере?' }
+  const account = extractAccountFromLog(log)
+  if (!account) return { ok: false, error: 'В логе игры нет входа в аккаунт. Запусти Warframe и войди.' }
+  if (!account.accountId) {
+    return { ok: false, displayName: account.displayName, error: `В логе игры есть только ник «${account.displayName}», ID там больше не пишут. Войди через warframe.com, так быстрее.` }
+  }
+  return { ok: true, ...account }
 }
 
 async function fetchProfile(_event, accountId, platform) {
@@ -195,6 +207,33 @@ async function marketItems(_event, force = false) {
   return cached('market_items_v2.json', DAY_MS, async () => slimMarketItems(await marketFetch(`${MARKET_API}/items`)), force)
 }
 
+async function marketHistory(_event, slug) {
+  if (!isMarketSlug(slug)) return { ok: false, error: 'Неверный идентификатор предмета' }
+  return cached(`market_history_${slug}.json`, HOUR_MS, async () => summarizeHistory(await marketFetch(`${MARKET_V1_API}/items/${slug}/statistics`)))
+}
+
+// сборки с overframe, кэш на сутки
+async function buildsList(_event, itemName) {
+  let url
+  try {
+    url = overframe.listUrl(itemName)
+  } catch (err) {
+    return { ok: false, error: err.message }
+  }
+  const file = `builds_${String(itemName).toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 60)}.json`
+  return cached(file, DAY_MS, async () => overframe.slimBuildList(await fetchJson(url)))
+}
+
+async function buildDetail(_event, id) {
+  let url
+  try {
+    url = overframe.detailUrl(id)
+  } catch (err) {
+    return { ok: false, error: err.message }
+  }
+  return cached(`build_${id}.json`, DAY_MS, async () => overframe.slimBuild(await fetchJson(url)))
+}
+
 // цены всех прайм-частей одним запросом
 async function marketPrices(_event, force = false) {
   return cached('market_prices.json', HOUR_MS, async () => {
@@ -253,6 +292,31 @@ function toggleOverlay() {
   if (!overlayWindow) return createOverlay()
   if (overlayWindow.isVisible()) overlayWindow.hide()
   else overlayWindow.showInactive()
+}
+
+// оверлей мог ещё не загрузиться, тогда шлём после загрузки
+function sendToOverlay(channel, payload) {
+  if (!overlayWindow) createOverlay()
+  else if (!overlayWindow.isVisible()) overlayWindow.showInactive()
+  const wc = overlayWindow.webContents
+  if (wc.isLoading()) wc.once('did-finish-load', () => wc.send(channel, payload))
+  else wc.send(channel, payload)
+}
+
+let rewardScanner = null
+
+async function scanRewards() {
+  if (!rewardScanner) {
+    rewardScanner = createRewardScanner({ catalogGet, marketItems, marketPrices, readLogTail, userData: app.getPath('userData') })
+  }
+  sendToOverlay('rewards:status', { busy: true })
+  const result = await rewardScanner.run()
+  sendToOverlay('rewards:result', result)
+  return result
+}
+
+function openLastScan() {
+  return shell.openPath(path.join(OCR_DIR(app.getPath('userData')), 'last-rewards.png'))
 }
 
 function hideOverlay() {
@@ -325,18 +389,30 @@ app.whenReady().then(() => {
   ipcMain.handle('market:items', marketItems)
   ipcMain.handle('market:price', marketPrice)
   ipcMain.handle('market:prices', marketPrices)
+  ipcMain.handle('market:history', marketHistory)
+  ipcMain.handle('builds:list', buildsList)
+  ipcMain.handle('builds:detail', buildDetail)
+  ipcMain.handle('rewards:scan', scanRewards)
+  ipcMain.handle('rewards:lastShot', openLastScan)
+  ipcMain.handle('account:login', () => loginViaWarframe(mainWindow))
+  ipcMain.handle('account:parse', (_e, text) => accountIdFromUserData(text))
+  ipcMain.handle('account:userDataPage', () => shell.openExternal(USER_DATA_URL))
   ipcMain.handle('window:focus', focusWindow)
   ipcMain.handle('overlay:toggle', toggleOverlay)
   ipcMain.handle('overlay:hide', hideOverlay)
   ipcMain.handle('overlay:opacity', setOverlayOpacity)
   if (!globalShortcut.register(OVERLAY_SHORTCUT, toggleOverlay)) console.error('[overlay] shortcut is taken', OVERLAY_SHORTCUT)
+  if (!globalShortcut.register(REWARDS_SHORTCUT, () => void scanRewards())) console.error('[rewards] shortcut is taken', REWARDS_SHORTCUT)
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-app.on('will-quit', () => globalShortcut.unregisterAll())
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
+  void stopOcr()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

@@ -1,15 +1,45 @@
 import { useMemo, useState } from 'react'
-import { useMarketItems, useMarketPrice } from '../hooks/useApi'
+import { useMarketHistory, useMarketItems, useMarketPrice } from '../hooks/useApi'
 import { openExternal } from '../lib/api'
-import { betterForDucats, whisperText } from '../lib/market'
+import { betterForDucats, priceTrend, whisperText } from '../lib/market'
 import { matchesQuery } from '../lib/text'
 import type { MarketItem } from '../lib/types'
 import { EmptyState, ErrorState, Loading, Orokin, SearchBox } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { useQueryParam } from '../components/CatalogBits'
+import { PriceChart } from '../components/PriceChart'
 
 const MAX_RESULTS = 40
 const STATUS_LABEL: Record<string, string> = { ingame: 'в игре', online: 'онлайн' }
+
+function History({ slug }: { slug: string }) {
+  const { data, loading, error } = useMarketHistory(slug)
+  const [range, setRange] = useState<'days' | 'hours'>('days')
+  const points = data?.[range] ?? []
+  const trend = priceTrend(points)
+  return (
+    <div style={{ marginTop: 22 }}>
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+        <h3>Цена по сделкам</h3>
+        <div className="chips" role="group" aria-label="Период">
+          <button className="chip" aria-pressed={range === 'days'} onClick={() => setRange('days')}>90 дней</button>
+          <button className="chip" aria-pressed={range === 'hours'} onClick={() => setRange('hours')}>48 часов</button>
+        </div>
+      </div>
+      {loading && !data && <Loading rows={1} height={170} />}
+      {error && !data && <p className="small faint">{error}</p>}
+      {trend && (
+        <p className="small muted" style={{ margin: '0 0 6px' }}>
+          Сейчас около <span className="num gold">{trend.last} пл</span>,{' '}
+          <span className="num" style={{ color: trend.changePct > 0 ? 'var(--lotus)' : trend.changePct < 0 ? 'var(--kuva)' : undefined }}>
+            {trend.changePct > 0 ? '+' : ''}{trend.changePct}%
+          </span>{' '}за период. Было от {trend.low} до {trend.high}, сделок {trend.volume}.
+        </p>
+      )}
+      {data && <PriceChart points={points} unit={range === 'days' ? 'day' : 'hour'} />}
+    </div>
+  )
+}
 
 function PricePanel({ item }: { item: MarketItem }) {
   const { data, loading, error, refresh } = useMarketPrice(item.slug)
@@ -45,12 +75,13 @@ function PricePanel({ item }: { item: MarketItem }) {
           {betterForDucats(data.sell, item.ducats) && (
             <div className="callout">Платины за этот предмет дают мало - выгоднее сдать его Баро за {item.ducats} дукатов.</div>
           )}
+          <History slug={item.slug} />
           <h3 style={{ margin: '22px 0 8px' }}>Продавцы онлайн</h3>
           {data.sellers.length === 0 ? (
             <p className="small muted">Сейчас никто не продаёт этот предмет в игре.</p>
           ) : (
             <table className="table">
-              <thead><tr><th>Игрок</th><th>Статус</th><th className="right">Кол-во</th><th className="right">Цена</th><th /></tr></thead>
+              <thead><tr><th>Игрок</th><th>Статус</th><th className="right">Шт.</th><th className="right">Цена</th><th /></tr></thead>
               <tbody>
                 {data.sellers.map((s) => (
                   <tr key={s.name + s.platinum}>
@@ -59,8 +90,8 @@ function PricePanel({ item }: { item: MarketItem }) {
                     <td className="right num">{s.quantity}</td>
                     <td className="right num">{s.platinum} пл</td>
                     <td className="right">
-                      <button className="btn btn--ghost small" onClick={() => copy(s.name, s.platinum)}>
-                        {copied === s.name ? 'Скопировано' : 'Скопировать сообщение'}
+                      <button className="btn btn--ghost small" title="Скопировать сообщение продавцу" onClick={() => copy(s.name, s.platinum)}>
+                        {copied === s.name ? 'Готово' : 'Написать'}
                       </button>
                     </td>
                   </tr>

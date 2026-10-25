@@ -4,7 +4,7 @@ import catalog from './catalog.cjs'
 import market from './market.cjs'
 
 const { splitCatalog, buildRelics, refinementOf, parseRelicName } = catalog
-const { isMarketSlug, slimMarketItems, summarizeOrders, mapDucatPrices } = market
+const { isMarketSlug, slimMarketItems, summarizeOrders, mapDucatPrices, summarizeHistory } = market
 
 const relic = (suffix, chance, vaulted = true) => ({
   uniqueName: `/Lotus/Types/Game/Projections/T4VoidProjectionE${suffix}`,
@@ -107,5 +107,24 @@ describe('market', () => {
       b_prime_barrel: { median: 3, average: 3, volume: 2 },
     })
     expect(mapDucatPrices(null, items)).toEqual({})
+  })
+  it('compresses closed-trade statistics into day and hour points', () => {
+    const row = (datetime, median, volume) => ({ datetime, median, volume, min_price: median - 1, max_price: median + 1, wa_price: median })
+    const json = {
+      payload: {
+        statistics_closed: {
+          '90days': [row('2026-10-02T00:00:00.000+00:00', 70, 10), row('2026-10-01T00:00:00.000+00:00', 75, 5), { datetime: 'bad' }],
+          '48hours': [row('2026-10-25T10:00:00.000+00:00', 68, 2)],
+        },
+        statistics_live: { '90days': [row('2026-10-01T00:00:00.000+00:00', 999, 1)] },
+      },
+    }
+    const h = summarizeHistory(json)
+    expect(h.days).toEqual([
+      { t: Date.UTC(2026, 9, 1), median: 75, min: 74, max: 76, volume: 5 },
+      { t: Date.UTC(2026, 9, 2), median: 70, min: 69, max: 71, volume: 10 },
+    ])
+    expect(h.hours).toHaveLength(1)
+    expect(summarizeHistory(null)).toEqual({ days: [], hours: [] })
   })
 })

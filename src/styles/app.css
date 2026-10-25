@@ -1202,3 +1202,52 @@ ul.dots li + li {
   flex-direction: column;
   line-height: 1.35;
 }
+
+/* график цен */
+.chart svg {
+  display: block;
+}
+.chart__grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.chart__axis {
+  fill: var(--faint);
+  font-size: 11px;
+}
+.chart__line {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.chart__band {
+  fill: var(--gold);
+  opacity: 0.12;
+}
+.chart__cross {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+.chart__dot {
+  fill: var(--gold-pale);
+  stroke: var(--panel);
+  stroke-width: 2;
+}
+.chart__vol {
+  fill: var(--line-strong);
+}
+.chart__vol--on {
+  fill: var(--gold-dim);
+}
+.chart__tip {
+  position: absolute;
+  top: 8px;
+  min-width: 150px;
+  padding: 8px 10px;
+  background: var(--panel-raised);
+  border: 1px solid var(--line-strong);
+  font-size: 12px;
+  line-height: 1.5;
+  pointer-events: none;
+}

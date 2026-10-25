@@ -6,6 +6,7 @@ import { toggleGoal } from '../lib/progress'
 import { WEAPON_CATEGORY_LABEL } from '../data/weapons'
 import { EmptyState, ErrorState, ItemImage, Loading, Orokin } from '../components/ui'
 import { ItemParts } from '../components/ItemParts'
+import { Builds } from '../components/Builds'
 import { Icon } from '../components/Icon'
 import { usePlayer, useProgress } from '../state/AppState'
 
@@ -88,6 +89,7 @@ export function WeaponDetail() {
           <h2 style={{ marginBottom: 10 }}>Где достать</h2>
           <ItemParts item={item} />
         </Orokin>
+        <div style={{ marginTop: 20 }}><Builds wikiaUrl={item.wikiaUrl} /></div>
       </div>
     </div>
   )

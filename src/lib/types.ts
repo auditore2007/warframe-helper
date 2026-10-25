@@ -61,6 +61,8 @@ export interface Item {
   magazineSize?: number
   reloadTime?: number
   disposition?: number
+  multishot?: number
+  damage?: Record<string, number>
   trigger?: string
 }
 
@@ -273,12 +275,73 @@ export interface MarketPrice {
 
 export type PriceMap = Record<string, { median: number; average: number; volume: number }>
 
+export interface PricePoint {
+  t: number
+  median: number
+  min: number | null
+  max: number | null
+  volume: number
+}
+
+export interface PriceHistory {
+  days: PricePoint[]
+  hours: PricePoint[]
+}
+
+export interface BuildSummary {
+  id: number
+  title: string
+  score: number
+  formas: number
+  author: string | null
+  updated: string | null
+  url: string
+}
+
+export interface BuildDetail {
+  id: number
+  description: string
+  platinum: number
+  endo: number
+  masteryRank: number
+  stats: Partial<Record<'strength' | 'duration' | 'range' | 'efficiency' | 'health' | 'shield' | 'armor' | 'energy', number>>
+  totalDamage: number | null
+  url: string
+}
+
+export interface ScannedReward {
+  text: string
+  slug: string | null
+  name: string
+  platinum: number | null
+  ducats: number
+}
+
+export interface RewardScan {
+  ok: boolean
+  error?: string
+  items: ScannedReward[]
+  columns: string[]
+  at: number
+}
+
+export type RewardEvent = { type: 'result'; data: RewardScan } | { type: 'status'; data: { busy: boolean } }
+
 export interface Bridge {
   apiGet: (path: string, ttlSeconds?: number, force?: boolean) => Promise<ApiResult<unknown>>
   catalog: <K extends CatalogName>(name: K, force?: boolean) => Promise<ApiResult<CatalogMap[K]>>
   marketItems: (force?: boolean) => Promise<ApiResult<MarketItem[]>>
   marketPrice: (slug: string) => Promise<ApiResult<MarketPrice>>
   marketPrices: (force?: boolean) => Promise<ApiResult<PriceMap>>
+  marketHistory: (slug: string) => Promise<ApiResult<PriceHistory>>
+  buildsList: (itemName: string) => Promise<ApiResult<BuildSummary[]>>
+  buildDetail: (id: number) => Promise<ApiResult<BuildDetail>>
+  scanRewards: () => Promise<RewardScan>
+  openLastScan: () => Promise<string>
+  onRewards: (cb: (e: RewardEvent) => void) => () => void
+  loginWarframe: () => Promise<{ ok: boolean; accountId?: string; error?: string }>
+  parseAccountId: (text: string) => Promise<string | null>
+  openUserDataPage: () => Promise<void>
   focusWindow: () => Promise<void>
   toggleOverlay: () => Promise<void>
   hideOverlay: () => Promise<void>

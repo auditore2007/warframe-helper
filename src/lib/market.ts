@@ -1,4 +1,4 @@
-import type { MarketItem } from './types'
+import type { MarketItem, PricePoint } from './types'
 
 export interface MarketIndex {
   byRef: Map<string, MarketItem>
@@ -58,4 +58,27 @@ export function wtsMessages(entries: WtsEntry[]): string[] {
   }
   if (current !== 'WTS') messages.push(current)
   return messages
+}
+
+export interface PriceTrend {
+  last: number
+  changePct: number
+  low: number
+  high: number
+  volume: number
+}
+
+// изменение медианы за период: последняя точка против первой
+export function priceTrend(points: PricePoint[]): PriceTrend | null {
+  if (points.length === 0) return null
+  const first = points[0].median
+  const last = points[points.length - 1].median
+  const medians = points.map((p) => p.median)
+  return {
+    last,
+    changePct: first ? Math.round(((last - first) / first) * 100) : 0,
+    low: Math.min(...medians),
+    high: Math.max(...medians),
+    volume: points.reduce((sum, p) => sum + p.volume, 0),
+  }
 }

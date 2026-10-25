@@ -30,6 +30,7 @@ const NAV: { group: string | null; items: NavItem[] }[] = [
       { to: '/arcanes', label: 'Мистификаторы', icon: 'arcane' },
       { to: '/relics', label: 'Реликвии', icon: 'relic' },
       { to: '/shards', label: 'Осколки Архонта', icon: 'gem' },
+      { to: '/calculator', label: 'Калькулятор урона', icon: 'weapon' },
       { to: '/farm', label: 'Фарм и дроп', icon: 'farm' },
       { to: '/starchart', label: 'Звёздная карта', icon: 'map' },
       { to: '/guides', label: 'Гайды', icon: 'book' },

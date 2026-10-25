@@ -8,6 +8,7 @@ import type { Profile } from '../lib/types'
 const STORAGE_KEY = 'wfh.progress.v1'
 const DAILY_IDS = new Set(CHECKLIST.filter((t) => t.period === 'daily').map((t) => t.id))
 const TIMER_CHECK_MS = 10_000
+const PROFILE_REFRESH_MS = 30 * 60_000
 
 // оверлей - второе окно, уведомления шлёт только главное
 export const isOverlayWindow = (): boolean => window.location.hash.startsWith('#/overlay')
@@ -37,7 +38,7 @@ interface ProfileContextValue {
   stale: boolean
   xpByUnique: Map<string, number>
   refresh: () => void
-  detect: () => Promise<{ ok: boolean; error?: string; account?: AccountLink }>
+  detect: () => Promise<{ ok: boolean; error?: string; account?: AccountLink; logName?: string | null }>
 }
 
 const ProgressContext = createContext<ProgressContextValue | null>(null)
@@ -157,10 +158,17 @@ function useProfile(account: AccountLink | null, update: (fn: Updater) => void):
     else setStatus('idle')
   }, [account, refresh])
 
+  // профиль сам обновляется раз в полчаса
+  useEffect(() => {
+    if (!account) return
+    const id = window.setInterval(refresh, PROFILE_REFRESH_MS)
+    return () => window.clearInterval(id)
+  }, [account, refresh])
+
   const detect = useCallback(async () => {
     if (!window.wf) return { ok: false, error: 'Автопоиск работает только в приложении для компьютера' }
     const res = await window.wf.detectAccount()
-    if (!res.ok || !res.accountId) return { ok: false, error: res.error ?? 'Аккаунт не найден' }
+    if (!res.ok || !res.accountId) return { ok: false, error: res.error ?? 'Аккаунт не найден', logName: res.displayName ?? null }
     const link: AccountLink = { accountId: res.accountId, platform: 'pc', displayName: res.displayName ?? null }
     update((s) => ({ ...s, account: link }))
     return { ok: true, account: link }

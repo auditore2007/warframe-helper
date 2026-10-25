@@ -25,6 +25,7 @@ import { Foundry } from './pages/Foundry'
 import { Syndicates } from './pages/Syndicates'
 import { Collections } from './pages/Collections'
 import { Overlay } from './pages/Overlay'
+import { Calculator } from './pages/Calculator'
 import { EmptyState } from './components/ui'
 
 export function App() {
@@ -47,6 +48,7 @@ export function App() {
             <Route path="arcanes" element={<Arcanes />} />
             <Route path="relics" element={<Relics />} />
             <Route path="shards" element={<Shards />} />
+            <Route path="calculator" element={<Calculator />} />
             <Route path="farm" element={<Farm />} />
             <Route path="starchart" element={<StarChart />} />
             <Route path="guides" element={<Guides />} />

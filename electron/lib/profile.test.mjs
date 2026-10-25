@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import profile from './profile.cjs'
 import apiPath from './apiPath.cjs'
-const { extractAccountFromLog, parseProfile, profileUrls, isAccountId } = profile
+const { extractAccountFromLog, parseProfile, profileUrls, isAccountId, accountIdFromUserData } = profile
 const { isAllowedApiPath, cacheFileName } = apiPath
 
 const A = 'aaaaaaaaaaaaaaaaaaaaaaaa'
@@ -78,5 +78,21 @@ describe('api path guard', () => {
   })
   it('makes safe cache file names', () => {
     expect(cacheFileName('/warframes/?language=ru')).toBe('warframes_language_ru.json')
+  })
+})
+
+describe('accountIdFromUserData', () => {
+  it('reads user_id from the warframe.com user-data json', () => {
+    expect(accountIdFromUserData(JSON.stringify({ user_id: A, email: 'x@y.z', other: B }))).toBe(A)
+    expect(accountIdFromUserData(JSON.stringify({ data: { accountId: B } }))).toBe(B)
+  })
+  it('finds user_id in pasted text and ignores other ids', () => {
+    expect(accountIdFromUserData(`garbage {"foo":"${B}","user_id":"${A}"} tail`)).toBe(A)
+    expect(accountIdFromUserData(`  ${A.toUpperCase()}  `)).toBe(A)
+  })
+  it('returns null when there is no id', () => {
+    expect(accountIdFromUserData('')).toBeNull()
+    expect(accountIdFromUserData('{"user_id":null}')).toBeNull()
+    expect(accountIdFromUserData(`{"x":"${A}","y":"${B}"}`)).toBeNull()
   })
 })

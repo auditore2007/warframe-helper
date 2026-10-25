@@ -8,7 +8,7 @@ import { expectedValue } from '../lib/relicValue'
 import { rollCycle } from '../lib/cycles'
 import { cycleRu, missionRu } from '../lib/i18n'
 import { formatCountdown, msUntil } from '../lib/time'
-import type { PriceMap, RelicItem, WorldState } from '../lib/types'
+import type { PriceMap, RelicItem, RewardScan, WorldState } from '../lib/types'
 import type { MarketIndex } from '../lib/market'
 import { Icon } from '../components/Icon'
 
@@ -22,6 +22,48 @@ function readOpacity(): number {
   } catch {
     return DEFAULT_OPACITY
   }
+}
+
+// результат скана наград из разлома, лучшая по платине подсвечена
+function Rewards() {
+  const [scan, setScan] = useState<RewardScan | null>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (!window.wf) return
+    return window.wf.onRewards((e) => {
+      if (e.type === 'status') setBusy(e.data.busy)
+      else {
+        setBusy(false)
+        setScan(e.data)
+      }
+    })
+  }, [])
+  const best = scan?.items.reduce<number>((top, r, i, all) => ((r.platinum ?? 0) > (all[top]?.platinum ?? 0) ? i : top), 0)
+  return (
+    <div>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <div className="meta-label" style={{ margin: 0 }}>Награды разлома</div>
+        <button className="btn btn--ghost overlay__nodrag small" onClick={() => void window.wf?.scanRewards()} disabled={busy}>{busy ? 'Читаю...' : 'Сканировать'}</button>
+      </div>
+      {!scan && !busy && <p className="small faint" style={{ margin: 0 }}>На экране выбора награды жми Ctrl+Alt+R</p>}
+      {scan && !scan.ok && <p className="small" style={{ color: 'var(--kuva)', margin: 0 }}>{scan.error}</p>}
+      {scan?.ok && scan.items.length === 0 && (
+        <p className="small faint" style={{ margin: 0 }}>
+          Не нашёл названий наград. <button className="btn btn--ghost small overlay__nodrag" onClick={() => void window.wf?.openLastScan()}>Что увидел</button>
+        </p>
+      )}
+      {scan?.ok && scan.items.length > 0 && (
+        <ul className="clean small">
+          {scan.items.map((r, i) => (
+            <li key={`${r.text}-${i}`} className="row" style={{ justifyContent: 'space-between', padding: '2px 0', color: i === best && (r.platinum ?? 0) > 0 ? 'var(--gold-pale)' : undefined }}>
+              <span>{i === best && (r.platinum ?? 0) > 0 ? '★ ' : ''}{r.name}</span>
+              <span className="num">{r.platinum !== null ? `${Math.round(r.platinum)} пл` : '?'}{r.ducats ? <span className="faint"> · {r.ducats} д</span> : null}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
 }
 
 function Cycles({ world, now }: { world: WorldState; now: number }) {
@@ -106,6 +148,7 @@ export function Overlay() {
         <button className="btn btn--ghost overlay__nodrag" onClick={() => void window.wf?.hideOverlay()} aria-label="Скрыть оверлей" title="Скрыть (Ctrl+Shift+O)"><Icon name="close" size={15} /></button>
       </header>
       <div className="overlay__body">
+        <Rewards />
         {world && <Cycles world={world} now={now} />}
         {world?.arbitration?.node && !world.arbitration.expired && (
           <p className="small" style={{ margin: 0 }}><span className="faint">Арбитраж:</span> {missionRu(world.arbitration.type)} - {world.arbitration.node}</p>

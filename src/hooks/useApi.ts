@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiGet } from '../lib/api'
-import type { ApiResult, CatalogMap, CatalogName, MarketItem, MarketPrice, PriceMap } from '../lib/types'
+import type { ApiResult, BuildDetail, BuildSummary, CatalogMap, CatalogName, MarketItem, MarketPrice, PriceHistory, PriceMap } from '../lib/types'
 
 type Loader<T> = (force: boolean) => Promise<ApiResult<T>>
 
@@ -92,4 +92,16 @@ export function useMarketPrice(slug: string | null): ApiState<MarketPrice> {
 
 export function useMarketPrices(enabled = true): ApiState<PriceMap> {
   return useResource<PriceMap>(enabled ? 'market:prices' : null, async (force) => (window.wf ? window.wf.marketPrices(force) : DESKTOP_ONLY))
+}
+
+export function useMarketHistory(slug: string | null): ApiState<PriceHistory> {
+  return useResource<PriceHistory>(slug ? `market:history:${slug}` : null, async () => (window.wf && slug ? window.wf.marketHistory(slug) : DESKTOP_ONLY))
+}
+
+export function useBuilds(itemName: string | null): ApiState<BuildSummary[]> {
+  return useResource<BuildSummary[]>(itemName ? `builds:${itemName}` : null, async () => (window.wf && itemName ? window.wf.buildsList(itemName) : DESKTOP_ONLY))
+}
+
+export function useBuildDetail(id: number | null): ApiState<BuildDetail> {
+  return useResource<BuildDetail>(id ? `build:${id}` : null, async () => (window.wf && id ? window.wf.buildDetail(id) : DESKTOP_ONLY))
 }

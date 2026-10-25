@@ -6,6 +6,7 @@ import { toggleGoal } from '../lib/progress'
 import { FRAME_GUIDE_BY_KEY, ROLE_LABEL } from '../data/frames'
 import { EmptyState, ErrorState, ItemImage, Loading, Orokin, Tier } from '../components/ui'
 import { ItemParts } from '../components/ItemParts'
+import { Builds } from '../components/Builds'
 import { Icon } from '../components/Icon'
 import { usePlayer, useProgress } from '../state/AppState'
 
@@ -101,6 +102,7 @@ export function FrameDetail() {
           )}
         </div>
         <div className="stack" style={{ gap: 20 }}>
+          <Builds wikiaUrl={item.wikiaUrl} />
           {guide && guide.tips.length > 0 && (
             <section className="panel">
               <h3 style={{ marginBottom: 10 }}>Советы по игре</h3>

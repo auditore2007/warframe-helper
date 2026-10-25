@@ -1,95 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useFrames, useWeapons } from '../hooks/useCatalog'
-import { useNow } from '../hooks/useNow'
 import { masteryStatus } from '../lib/mastery'
-import { countOwnedParts, setAccount, toggleGoal, type Platform } from '../lib/progress'
-import { formatRelative } from '../lib/time'
+import { countOwnedParts, toggleGoal } from '../lib/progress'
 import { pluralRu } from '../lib/i18n'
-import { EmptyState, ItemImage, Orokin } from '../components/ui'
-import { Icon } from '../components/Icon'
+import { EmptyState, ItemImage } from '../components/ui'
 import { usePlayer, useProgress } from '../state/AppState'
 import type { Item } from '../lib/types'
 import { isResourceComponent } from '../lib/parts'
-
-const ACCOUNT_ID_RE = /^[0-9a-f]{24}$/
-const PLATFORMS: { id: Platform; label: string }[] = [
-  { id: 'pc', label: 'ПК' },
-  { id: 'ps4', label: 'PlayStation' },
-  { id: 'xb1', label: 'Xbox' },
-  { id: 'swi', label: 'Switch' },
-]
-
-function AccountPanel() {
-  const { progress, update } = useProgress()
-  const { detect, refresh, status, error, fetchedAt, stale, profile } = usePlayer()
-  const now = useNow(30_000)
-  const [manualId, setManualId] = useState('')
-  const [platform, setPlatform] = useState<Platform>('pc')
-  const [message, setMessage] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  const runDetect = async () => {
-    setBusy(true)
-    setMessage(null)
-    const res = await detect()
-    setBusy(false)
-    if (!res.ok) setMessage(res.error ?? 'Аккаунт не найден')
-  }
-
-  const saveManual = () => {
-    const id = manualId.trim().toLowerCase()
-    if (!ACCOUNT_ID_RE.test(id)) {
-      setMessage('ID аккаунта - это 24 символа из цифр и букв a–f.')
-      return
-    }
-    setMessage(null)
-    update((s) => setAccount(s, { accountId: id, platform, displayName: null }))
-  }
-
-  if (progress.account) {
-    return (
-      <Orokin>
-        <div className="row" style={{ gap: 18, alignItems: 'center' }}>
-          <span className="mr-badge"><span>{profile?.masteryRank ?? '–'}</span></span>
-          <div>
-            <h2>{profile?.displayName ?? progress.account.displayName ?? 'Тэнно'}</h2>
-            <div className="small muted">
-              {status === 'loading' && 'Синхронизация профиля…'}
-              {status === 'ready' && `Профиль обновлён ${formatRelative(fetchedAt ?? undefined, now)}${stale ? ', офлайн-копия' : ''}`}
-              {status === 'error' && error}
-            </div>
-          </div>
-          <span className="spacer" />
-          <button className="btn" onClick={refresh} disabled={status === 'loading'}><Icon name="refresh" size={16} />Обновить</button>
-          <button className="btn btn--ghost" onClick={() => update((s) => setAccount(s, null))}>Отвязать</button>
-        </div>
-        <p className="small faint" style={{ margin: '14px 0 0' }}>
-          Ранг мастерства и вкачанные предметы берутся из публичного профиля Warframe. Собранные части отмечай вручную - игра не открывает инвентарь сторонним программам.
-        </p>
-      </Orokin>
-    )
-  }
-
-  return (
-    <Orokin>
-      <h2 style={{ marginBottom: 8 }}>Привяжи аккаунт</h2>
-      <p className="muted">Если на этом компьютере есть Warframe, приложение найдёт твой аккаунт в логе игры. Пароль и данные входа не нужны.</p>
-      <button className="btn btn--gold" onClick={runDetect} disabled={busy}><Icon name="search" size={16} />{busy ? 'Ищу…' : 'Найти автоматически'}</button>
-      <div style={{ marginTop: 22 }}>
-        <div className="meta-label">Или введи ID аккаунта вручную</div>
-        <div className="row">
-          <input className="input" style={{ maxWidth: 320 }} value={manualId} onChange={(e) => setManualId(e.target.value)} placeholder="24 символа, например 5e83…" aria-label="ID аккаунта" />
-          <select className="input" value={platform} onChange={(e) => setPlatform(e.target.value as Platform)} aria-label="Платформа">
-            {PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-          </select>
-          <button className="btn" onClick={saveManual}>Привязать</button>
-        </div>
-      </div>
-      {message && <p className="small" role="alert" style={{ color: '#e98a82', marginTop: 12 }}>{message}</p>}
-    </Orokin>
-  )
-}
+import { AccountLinkPanel } from '../components/AccountLink'
 
 function MasterySummary({ frames, weapons }: { frames: Item[]; weapons: Item[] }) {
   const { profile, xpByUnique } = usePlayer()
@@ -183,7 +102,7 @@ export function Tracker() {
           <p>Мастерство берётся из профиля, цели и части хранятся у тебя на компьютере.</p>
         </div>
       </div>
-      <AccountPanel />
+      <AccountLinkPanel />
       <div className="section"><MasterySummary frames={frames} weapons={weapons} /></div>
       <section className="section">
         <h2 style={{ marginBottom: 14 }}>Мои цели</h2>

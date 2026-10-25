@@ -58,4 +58,24 @@ function mapDucatPrices(json, items) {
   return out
 }
 
-module.exports = { MARKET_API, MARKET_V1_API, isMarketSlug, slimMarketItems, summarizeOrders, mapDucatPrices }
+function historyPoints(rows) {
+  if (!Array.isArray(rows)) return []
+  return rows
+    .map((r) => ({
+      t: r ? Date.parse(r.datetime) : NaN,
+      median: finite(r && r.median),
+      min: finite(r && r.min_price),
+      max: finite(r && r.max_price),
+      volume: finite(r && r.volume) ?? 0,
+    }))
+    .filter((p) => Number.isFinite(p.t) && p.median !== null)
+    .sort((a, b) => a.t - b.t)
+}
+
+// v1 /items/{slug}/statistics -> только реальные сделки (closed), по дням и по часам
+function summarizeHistory(json) {
+  const closed = (json && json.payload && json.payload.statistics_closed) || {}
+  return { days: historyPoints(closed['90days']), hours: historyPoints(closed['48hours']) }
+}
+
+module.exports = { MARKET_API, MARKET_V1_API, isMarketSlug, slimMarketItems, summarizeOrders, mapDucatPrices, summarizeHistory }

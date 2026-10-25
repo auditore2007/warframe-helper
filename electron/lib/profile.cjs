@@ -92,4 +92,15 @@ function parseDailyStanding(root) {
   return out
 }
 
-module.exports = { isAccountId, extractAccountFromLog, profileUrls, parseProfile }
+const USER_DATA_ID_RE = /"(?:user_id|accountId|account_id)"\s*:\s*"([0-9a-fA-F]{24})"/
+
+// ответ warframe.com/api/user-data (или то, что юзер оттуда скопировал) -> id аккаунта
+function accountIdFromUserData(text) {
+  if (typeof text !== 'string') return null
+  const plain = text.trim().toLowerCase()
+  if (isAccountId(plain)) return plain
+  const m = USER_DATA_ID_RE.exec(text)
+  return m ? m[1].toLowerCase() : null
+}
+
+module.exports = { isAccountId, extractAccountFromLog, profileUrls, parseProfile, accountIdFromUserData }
